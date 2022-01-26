@@ -3,18 +3,12 @@ IDIR =$(SRC_DIR)/inc
 CC=cc
 CFLAGS=-I$(IDIR)
 
-ODIR=$(SRC_DIR)/obj
-# LDIR =$(SRC_DIR)/lib
-
-# LIBS=-lm
-
-# _DEPS = hellomake.h
-# DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
+ODIR=obj
 
 _OBJ = main.out 
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
-$(ODIR)/%.out: $(SRC_DIR)/%.c #$(DEPS)
+$(ODIR)/%.out: $(SRC_DIR)/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 main.app: $(OBJ)
