@@ -1,7 +1,7 @@
 #include <stdio.h>
 
-int main(int argc, char const *argv[])
+int main(void)
 {
-  printf("Test\n");
+  printf("Testing for a test commit\n");
   return 0;
 }
