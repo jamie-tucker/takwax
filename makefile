@@ -1,6 +1,6 @@
 SRC_DIR = src
 IDIR =$(SRC_DIR)/inc
-CC=cc
+CC=clang
 CFLAGS=-I$(IDIR)
 
 ODIR=obj
