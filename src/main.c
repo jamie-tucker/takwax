@@ -5,32 +5,27 @@
 
 #define COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
-#pragma region Category
+#pragma region Entry
 
-typedef struct Category {
-  char *name;
-  struct Category *parent;
-} Category;
+typedef struct Entry {
+  int children_len;
+  char name[512];  // Maybe allocate here?
+  struct Entry *parent, *children[100];
+} Entry;
 
-typedef struct Collection {
-  int count;
-  Category items[1024];
-} Collection;
-
-Category *
-createCategory(Category *cat, char *name) {
-  cat->name = name;
-  cat->parent = NULL;
-  return cat;
+Entry *
+createEntry(Entry *entry, char *name) {
+  strcpy(entry->name, name);
+  return entry;
 }
 
-Category *
-findCategory(Collection *collection, char *name) {
+Entry *
+findEntry(Entry *entry, char *name, int size) {
   int i;
 
-  for (i = 0; i < collection->count; ++i) {
-    if (strcmp(name, collection->items[i].name) == 0) {
-      return &collection->items[i];
+  for (i = 0; i < size; ++i) {
+    if (strcmp(name, entry[i].name) == 0) {
+      return &entry[i];
     }
   }
 
@@ -49,60 +44,47 @@ getfile(char *dir, char *filename, char *ext, char *op) {
   return fopen(fullpath, op);
 }
 
-int parse(Collection *collection) {
-  FILE *category;
+int parse(Entry *entry) {
+  FILE *catFile;
 
-  category = getfile("src/model/", "Categories", ".tsv", "r");
+  catFile = getfile("src/model/", "Categories", ".tsv", "r");
 
-  if (category == NULL) {
+  if (catFile == NULL) {
     printf("Categories.tsv File Not Found: \n");
     return 0;
   }
 
   char line[512];
-  Category *cat;  // = ((Category *)collection->items[collection->count]);
 
-  while (fgets(line, sizeof line, category)) {
-    // printf("%s\n", line);
-    // char *lp = strchr(line, '\t');
+  while (fgets(line, sizeof line, catFile)) {
+    char *token = strtok(line, "\t\n");
+    // char *name = (char *)malloc(sizeof(token));
+    // strcpy(name, token);
 
-    // while (lp != NULL) {
-    // int len = lp - line;
-    // char word[512];
-
-    char *word = (char *)malloc(sizeof(line));
-    memset(word, '\0', 512);
-    strncpy(word, line, 15);
-    // printf("%s\n", word);
-    // lp = strchr(lp + 1, '\t');
-    // }
-    // strcpy(word, line);
-    // char *word;
-    // memcpy(word, line, 512);
-
-    cat = createCategory(&collection->items[collection->count++], word);
-    // free(word);
+    createEntry(entry++, token);
   }
-  fclose(category);
+
+  fclose(catFile);
   return 1;
 }
 
-// static Category cats[10];
-static Collection collection;
-// static Collection collection;
 int main(void) {
-  if (!parse(&collection)) {
+  Entry entries[10] = {};
+
+  if (!parse(entries)) {
     printf("Parsing Error\n");
     exit(1);
   }
 
+  Entry *ep = entries;
+
   int i;
-  for (i = 0; i < collection.count; ++i) {
-    printf("Name: %s\n", collection.items[i].name);
-    collection.items[i].parent = findCategory(&collection, collection.items[0].name);
-    printf("Parent: %s\n", collection.items[i].parent->name);
-    // ((Category *)&collection.items[i])->parent = findCategory(&collection, ((Category *)&collection.items[0])->name);
-    // printf("Parent: %s\n", ((Category *)&collection.items[i])->parent->name);
+
+  for (i = 0; i < COUNT(entries); i++) {
+    printf("Name: %s\n", ep->name);
+    ep->parent = findEntry(entries, entries[0].name, COUNT(entries));
+    printf("Parent: %s\n", ep->parent->name);
+    ep++;
   }
 
   exit(0);
