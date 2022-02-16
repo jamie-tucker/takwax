@@ -1,0 +1,4 @@
+entry	parent	template
+root	root	index
+journal	root	content
+about	journal	content
