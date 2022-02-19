@@ -11,35 +11,55 @@
 
 #define COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
-#pragma region Entry
+#pragma region Model
+
+typedef enum {
+  header = 1,
+  footer = 2,
+  content = 3
+} TemplateType;
+
+typedef struct Template {
+  long body_len;
+  char name[ENTRY_SIZE];
+  char *body;
+  TemplateType type;
+} Template;
+
+typedef struct Templates {
+  int length;
+  struct Template values[100];
+} Templates;
 
 typedef struct Entry {
   int children_len, incoming_len;
   long content_len;
-  char name[ENTRY_SIZE], template[ENTRY_SIZE];
+  char name[ENTRY_SIZE];
   char *content;
+  struct Template *template;
   struct Entry *parent, *children[64], *incoming[64];
 } Entry;
 
 typedef struct Entries {
-  int entries_len;
-  struct Entry entries[100];
+  int length;
+  struct Entry values[100];
 } Entries;
 
 Entry *
-createEntry(Entry *entry, char *name) {
+create_entry(Entries *entries, char *name) {
+  Entry *entry = &entries->values[entries->length++];
   strcpy(entry->name, name);
   entry->children_len = 0;
   return entry;
 }
 
 Entry *
-findEntry(Entries *entries, char *name) {
+find_entry(Entries *entries, char *name) {
   int i;
 
-  for (i = 0; i < entries->entries_len; ++i) {
-    if (strcmp(name, entries->entries[i].name) == 0) {
-      return &entries->entries[i];
+  for (i = 0; i < entries->length; ++i) {
+    if (strcmp(name, entries->values[i].name) == 0) {
+      return &entries->values[i];
     }
   }
 
@@ -48,10 +68,48 @@ findEntry(Entries *entries, char *name) {
   return NULL;
 }
 
+int get_type(char *type) {
+  if (strcmp(type, "header") == 0)
+    return 1;
+  else if (strcmp(type, "footer") == 0)
+    return 2;
+  else if (strcmp(type, "content") == 0)
+    return 3;
+  else
+    return 0;
+}
+
+Template *
+create_template(Templates *templates, char *name, char *type) {
+  Template *template = &templates->values[templates->length++];
+  strcpy(template->name, name);
+  if ((template->type = get_type(type)) == 0) {
+    printf("Incorrect Template Type %s", type);
+    return NULL;
+  }
+
+  return template;
+}
+
+Template *
+find_template(Templates *templates, char *name) {
+  int i;
+
+  for (i = 0; i < templates->length; ++i) {
+    if (strcmp(name, templates->values[i].name) == 0) {
+      return &templates->values[i];
+    }
+  }
+
+  printf("Cannot find Template %s\n", name);
+
+  return NULL;
+}
+
 #pragma endregion
 
 FILE *
-getfile(char *dir, char *filename, char *ext, char *op) {
+get_file(char *dir, char *filename, char *ext, char *op) {
   char fullpath[1024] = {"\0"};
   strcat(fullpath, dir);
   strcat(fullpath, filename);
@@ -60,70 +118,119 @@ getfile(char *dir, char *filename, char *ext, char *op) {
   return fopen(fullpath, op);
 }
 
-int parse_entries(Entries *entries) {
-  FILE *entryFile = getfile(MODEL_DIR, "entries", ".tsv", "r");
+int parse_entries(Entries *entries, Templates *templates) {
+  FILE *entryFile = get_file(MODEL_DIR, "entries", ".tsv", "r");
 
   if (entryFile == NULL) {
-    printf("Entries.tsv File Not Found: \n");
+    printf("entries.tsv File Not Found: \n");
     return 0;
   }
 
   char line[3 * ENTRY_SIZE];
   printf("%s", fgets(line, sizeof line, entryFile));  // skip header
 
-  Entry *entryPtr = entries->entries;
+  // Entry *entryPtr = entries->values;
   while (fgets(line, sizeof line, entryFile)) {
-    char *token = strtok(line, "\t\n");
-    createEntry(entryPtr, token);
+    char *name = strtok(line, "\t\n");
+    char *parent = strtok(NULL, "\t\n");
+    char *template = strtok(NULL, "\t\n");
 
-    FILE *contentFile = getfile(CONTENT_DIR, token, ".md", "r");
+    Entry *entryPtr = create_entry(entries, name);
 
-    if (contentFile) {
-      fseek(contentFile, 0, SEEK_END);
-      entryPtr->content_len = ftell(contentFile);
-      fseek(contentFile, 0, SEEK_SET);
-      entryPtr->content = malloc(entryPtr->content_len);
-      if (entryPtr->content) {
-        fread(entryPtr->content, 1, entryPtr->content_len, contentFile);
-      } else {
-        printf("Not enough memory");
-        return 0;
-      }
+    FILE *contentFile = get_file(CONTENT_DIR, name, ".md", "r");
 
-      fclose(contentFile);
-    } else {
-      printf("Error Parsing Content: %s\n", token);
+    if (contentFile == NULL) {
+      printf("Content File Not Found %s.md\n", name);
       return 0;
     }
 
-    entries->entries_len++;
+    fseek(contentFile, 0, SEEK_END);
+    entryPtr->content_len = ftell(contentFile);
+    fseek(contentFile, 0, SEEK_SET);
+    entryPtr->content = (char *)malloc(entryPtr->content_len);
+    if (entryPtr->content) {
+      fread(entryPtr->content, 1, entryPtr->content_len, contentFile);
+    } else {
+      printf("Not enough memory");
+      return 0;
+    }
 
-    token = strtok(NULL, "\t\n");
-    entryPtr->parent = findEntry(entries, token);
+    fclose(contentFile);
+
+    entryPtr->parent = find_entry(entries, parent);
     entryPtr->parent->children[entryPtr->parent->children_len++] = entryPtr;
 
-    token = strtok(NULL, "\t\n");
-    strcpy(entryPtr->template, token);
-
-    entryPtr++;
+    entryPtr->template = find_template(templates, template);
   }
 
   fclose(entryFile);
   return 1;
 }
 
-int parse(Entries *entries) {
-  if (!parse_entries(entries)) {
+int parse_templates(Templates *templates) {
+  FILE *templateModel = get_file(MODEL_DIR, "templates", ".tsv", "r");
+
+  if (templateModel == NULL) {
+    printf("File Not Found: templates.tsv\n");
+    return 0;
+  }
+
+  char line[2 * ENTRY_SIZE];
+  printf("%s", fgets(line, sizeof line, templateModel));  // skip header
+
+  while (fgets(line, sizeof line, templateModel)) {
+    char *name = strtok(line, "\t\n");
+    char *type = strtok(NULL, "\t\n");
+
+    Template *templatePtr = create_template(templates, name, type);
+
+    if (templatePtr == NULL)
+      return 0;
+
+    FILE *templateFile = get_file(TEMPLATE_DIR, name, ".html", "r");
+
+    if (templateFile == NULL) {
+      printf("File Not Found: %s.html\n", name);
+      return 0;
+    }
+
+    fseek(templateFile, 0, SEEK_END);
+    templatePtr->body_len = ftell(templateFile);
+    fseek(templateFile, 0, SEEK_SET);
+    templatePtr->body = (char *)malloc(templatePtr->body_len);
+    if (templatePtr->body) {
+      fread(templatePtr->body, 1, templatePtr->body_len, templateFile);
+    } else {
+      printf("Not enough memory");
+      return 0;
+    }
+
+    fclose(templateFile);
+  }
+
+  fclose(templateModel);
+  return 1;
+}
+
+int parse(Entries *entries, Templates *templates) {
+  if (!parse_templates(templates)) {
+    printf("Error Parsing Templates\n");
+    return 0;
+  }
+
+  if (!parse_entries(entries, templates)) {
     printf("Error Parsing Entries\n");
+    return 0;
   }
 
   return 1;
 }
 
 static Entries entries;
+static Templates templates;
 
 int main(void) {
-  if (!parse(&entries)) {
+  if (!parse(&entries, &templates)) {
     printf("Parsing Error\n");
     exit(1);
   }
@@ -132,21 +239,21 @@ int main(void) {
   int i;
   Entry *head = NULL;
 
-  for (i = 0; i < entries.entries_len; i++) {
-    if (head == NULL && (&entries.entries[i] == entries.entries[i].parent)) {
-      head = &entries.entries[i];
+  for (i = 0; i < entries.length; i++) {
+    if (head == NULL && (&entries.values[i] == entries.values[i].parent)) {
+      head = &entries.values[i];
       printf("Head is: %s\n", head->name);
     }
-    printf("Name: %s\n", entries.entries[i].name);
-    printf("Size: %lu\n", sizeof(entries.entries[i]));
-    printf("Parent: %s\n", entries.entries[i].parent->name);
+    printf("Name: %s\n", entries.values[i].name);
+    printf("Size: %lu\n", sizeof(entries.values[i]));
+    printf("Parent: %s\n", entries.values[i].parent->name);
     printf("Children: ");
     int c;
-    for (c = 0; c < entries.entries[i].children_len; c++) {
-      printf("%s ", entries.entries[i].children[c]->name);
+    for (c = 0; c < entries.values[i].children_len; c++) {
+      printf("%s ", entries.values[i].children[c]->name);
     }
     printf("\n");
-    printf("Template: %s\n", entries.entries[i].template);
+    printf("Template: %s\n", entries.values[i].template->name);
   }
 
   exit(0);
