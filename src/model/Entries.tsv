@@ -1,4 +1,4 @@
 entry	parent	template
-root	root	index
-journal	root	content
+index	index	index
+journal	index	content
 about	journal	content
