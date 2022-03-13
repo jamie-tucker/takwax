@@ -7,5 +7,6 @@ this link [](http://www.google.com) is the full addresss
 ## navigation links
 
 - [link #1]({index})
+- [link #1]({indexes})
 - [link #2]({journal})
 - [link #3]({about})

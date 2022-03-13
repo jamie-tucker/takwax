@@ -20,8 +20,35 @@ The intent of this site is to become a depot for my journals, research, and proj
   - [x] TSV for Entry
 - [x] File reading
   - [x] Print to screen.
-- [ ] Parse HTML Template.
-- [ ] Create HTML Output.
+- [x] Parse MD
+  - Block elements
+    - [x] Headers
+    - [x] UL Lists
+      - [x] Nested lists
+    - [ ] OL Lists
+      - [ ] Mixed Lists
+    - [x] Paragraphs
+    - [x] line breaks
+    - [ ] ID (NTH)
+    - [ ] Class (NTH) 
+  - Inline Elements
+    - [x] Links
+      - [x] Internal
+      - [x] External
+      - [x] Page anchors
+    - [ ] Images
+      - [ ] New Model for Images/Media
+      - [ ] Support captions
+      - [ ] Links for images
+      - [ ] Gallery view / image viewer
+    - [ ] Text formatting
+      - [ ] **Strong**
+      - [ ] ~~Strikethrough~~
+      - [ ] *EM*
+- [ ] Move MD to parse stage in order to capture Incoming links?
+- [x] Parse HTML Template.
+- [x] Create HTML Output.
+- [ ] Error handling
 
 ## LICENSE:
 The source code is supplied as-is under the [MIT License](https://github.com/jamie-tucker/takwax/blob/main/LICENSE) and all media and written site content are [BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) unless otherwise noted.
