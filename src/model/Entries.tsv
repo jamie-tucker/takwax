@@ -1,4 +1,4 @@
-entry	parent	template
-index	index	index
-journal	index	content
-about	journal	content
+entry	parent	template	header	footer
+index	index	index	header	footer
+journal	index	content	header	footer
+about	journal	content	header	footer

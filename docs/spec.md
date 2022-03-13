@@ -34,13 +34,19 @@
 </nav>
 ```
 
+### Content
+
+{content}
+
+outputs markdown content file
+
 ### Incoming Links
 
 {inc}
 
 ```
 <nav aria-labelledby="inc">
-  <h2 id="inc">Incoming Links</h6>
+  <h6 id="inc">Incoming Links</h6>
   <ul>
     <li></li>
   </ul>
@@ -52,7 +58,7 @@
 ### Links
 
 [link name](http://) External Link
-[link name](./link.html) Internal Link
+[link name]({index}) Internal Link
 
 ```
 <a href="http://">link name</a>

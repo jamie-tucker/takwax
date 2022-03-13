@@ -2,12 +2,17 @@
 <html>
 
 <head>
-  {title}
+  <title>{title}</title>
 </head>
 
 <body>
   <header>
-    {nav}
+    <h1>{title}</h1>
+    <nav aria-label="primary">
+      {nav}
+    </nav>
     <hr />
-    {...}
+    <nav aria-label="breadcrumbs">
+      {...}
+    </nav>
   </header>
