@@ -32,7 +32,7 @@ typedef struct Media {
 
 typedef struct Template {
   long body_len;
-  char name[ENTRY_SIZE];
+  char id[ENTRY_SIZE];
   char *body;
   TemplateType type;
 } Template;
@@ -45,6 +45,7 @@ typedef struct Templates {
 typedef struct Entry {
   int children_len, incoming_len;
   long content_len;
+  char id[ENTRY_SIZE];
   char name[ENTRY_SIZE];
   char *content;
   struct Template *header, *footer, *template;
@@ -59,20 +60,21 @@ typedef struct Entries {
 static void output_md_line(FILE *output, char *curLine, Entry *entry, Entries *entries);
 
 Entry *
-create_entry(Entries *entries, char *name) {
+create_entry(Entries *entries, char *id, char *name) {
   Entry *entry = &entries->values[entries->length++];
+  strcpy(entry->id, id);
   strcpy(entry->name, name);
   entry->children_len = 0;
   return entry;
 }
 
 Entry *
-find_entry(Entry *entry_start, int length, char *name) {
+find_entry(Entry *entry_start, int length, char *id) {
   int i;
 
   for (i = 0; i < length; ++i) {
     Entry *entry_ptr = entry_start + i;
-    if (strcmp(name, entry_ptr->name) == 0) {
+    if (strcmp(id, entry_ptr->id) == 0) {
       return entry_ptr;
     }
   }
@@ -81,8 +83,8 @@ find_entry(Entry *entry_start, int length, char *name) {
 }
 
 Entry *
-find_entry_in_entries(Entries *entries, char *name) {
-  return find_entry(&entries->values[0], entries->length, name);
+find_entry_in_entries(Entries *entries, char *id) {
+  return find_entry(&entries->values[0], entries->length, id);
 }
 
 int get_type(char *type) {
@@ -97,9 +99,9 @@ int get_type(char *type) {
 }
 
 Template *
-create_template(Templates *templates, char *name, char *type) {
+create_template(Templates *templates, char *id, char *type) {
   Template *template = &templates->values[templates->length++];
-  strcpy(template->name, name);
+  strcpy(template->id, id);
   if ((template->type = get_type(type)) == 0) {
     printf("Incorrect Template Type %s", type);
     return NULL;
@@ -109,16 +111,16 @@ create_template(Templates *templates, char *name, char *type) {
 }
 
 Template *
-find_template(Templates *templates, char *name) {
+find_template(Templates *templates, char *id) {
   int i;
 
   for (i = 0; i < templates->length; ++i) {
-    if (strcmp(name, templates->values[i].name) == 0) {
+    if (strcmp(id, templates->values[i].id) == 0) {
       return &templates->values[i];
     }
   }
 
-  printf("Template Not Found: %s\n", name);
+  printf("Template Not Found: %s\n", id);
 
   return NULL;
 }
@@ -148,18 +150,19 @@ int parse_entries(Entries *entries, Templates *templates) {
 
   // Entry *entryPtr = entries->values;
   while (fgets(line, sizeof line, entryFile)) {
-    char *name = strtok(line, "\t\n");
+    char *id = strtok(line, "\t\n");
+    char *name = strtok(NULL, "\t\n");
     char *parent = strtok(NULL, "\t\n");
     char *template = strtok(NULL, "\t\n");
     char *header = strtok(NULL, "\t\n");
     char *footer = strtok(NULL, "\t\n");
 
-    Entry *entryPtr = create_entry(entries, name);
+    Entry *entryPtr = create_entry(entries, id, name);
 
-    FILE *contentFile = get_file(CONTENT_DIR, name, ".md", "r");
+    FILE *contentFile = get_file(CONTENT_DIR, id, ".md", "r");
 
     if (contentFile == NULL) {
-      printf("File Not Found %s.md\n", name);
+      printf("File Not Found %s.md\n", id);
       return 0;
     }
 
@@ -200,18 +203,18 @@ int parse_templates(Templates *templates) {
   printf("%s", fgets(line, sizeof line, templateModel));  // skip header
 
   while (fgets(line, sizeof line, templateModel)) {
-    char *name = strtok(line, "\t\n");
+    char *id = strtok(line, "\t\n");
     char *type = strtok(NULL, "\t\n");
 
-    Template *templatePtr = create_template(templates, name, type);
+    Template *templatePtr = create_template(templates, id, type);
 
     if (templatePtr == NULL)
       return 0;
 
-    FILE *templateFile = get_file(TEMPLATE_DIR, name, ".html", "r");
+    FILE *templateFile = get_file(TEMPLATE_DIR, id, ".html", "r");
 
     if (templateFile == NULL) {
-      printf("File Not Found: %s.html\n", name);
+      printf("File Not Found: %s.html\n", id);
       return 0;
     }
 
@@ -257,19 +260,19 @@ html_breadcrumbs(FILE *file, Entry *entry) {
   fputs("<ul>\n", file);
   Entry *entry_ptr = entry;
   int i = 0;
-  char *crumbs[ENTRY_COUNT];
-  crumbs[i++] = entry_ptr->name;
+  Entry *crumbs[ENTRY_COUNT];
+  crumbs[i++] = entry_ptr;
 
   while (entry_ptr != entry_ptr->parent) {
     entry_ptr = entry_ptr->parent;
-    crumbs[i++] = entry_ptr->name;
+    crumbs[i++] = entry_ptr;
   }
 
   while (i > 1) {
     i--;
-    fprintf(file, "<li><a href=\"./%s.html\">%s</a> // </li>\n", crumbs[i], crumbs[i]);
+    fprintf(file, "<li><a href=\"./%s.html\">%s</a> // </li>\n", crumbs[i]->id, crumbs[i]->name);
   }
-  fprintf(file, "<li>%s</li>\n", crumbs[0]);
+  fprintf(file, "<li>%s</li>\n", crumbs[0]->name);
 
   fputs("</ul>", file);
 }
@@ -280,8 +283,7 @@ html_nav(FILE *file, Entry *root) {
   fputs("<ul>", file);
 
   for (i = 0; i < root->children_len; i++) {
-    char *name = root->children[i]->name;
-    fprintf(file, "<li><a href=\"./%s.html\">%s</a></li>", name, name);
+    fprintf(file, "<li><a href=\"./%s.html\">%s</a></li>", root->children[i]->id, root->children[i]->name);
 
     if (root == root->children[i]) {
       continue;
@@ -305,8 +307,7 @@ html_inc_links(FILE *file, Entry *entry) {
   fputs("<ul>", file);
 
   for (i = 0; i < entry->incoming_len; i++) {
-    char *name = entry->incoming[i]->name;
-    fprintf(file, "<li><a href=\"./%s.html\">%s</a></li>", name, name);
+    fprintf(file, "<li><a href=\"./%s.html\">%s</a></li>", entry->incoming[i]->id, entry->incoming[i]->name);
 
     if (entry == entry->incoming[i]) {
       continue;
@@ -349,12 +350,12 @@ html_link(FILE *file, char *curLine, Entry *entry, Entries *entries) {
 
       Entry *linkedEntry = find_entry_in_entries(entries, link_ptr);
       if (linkedEntry) {
-        Entry *incEntry = find_entry(linkedEntry->incoming[0], linkedEntry->incoming_len, entry->name);
+        Entry *incEntry = find_entry(linkedEntry->incoming[0], linkedEntry->incoming_len, entry->id);
         if (incEntry == NULL && linkedEntry != entry) {
           linkedEntry->incoming[linkedEntry->incoming_len++] = entry;
         }
 
-        sprintf(linkURL, "./%s.html", linkedEntry->name);
+        sprintf(linkURL, "./%s.html", linkedEntry->id);
       }
 
       *link_end_ptr = '}';
@@ -568,9 +569,9 @@ output_html(FILE *output, char *curLine, Entry *entry, Entries *entries) {
 }
 
 int output_file(Entry *entry, Entries *entries) {
-  FILE *output = get_file(OUTPUT_DIR, entry->name, ".html", "w+");
+  FILE *output = get_file(OUTPUT_DIR, entry->id, ".html", "w+");
   if (output == NULL) {
-    printf("File Not Found: %s.html\n", entry->name);
+    printf("File Not Found: %s.html\n", entry->id);
     return 0;
   }
 
@@ -616,18 +617,18 @@ int main(void) {
   for (i = 0; i < entries.length; i++) {
     if (head == NULL && (&entries.values[i] == entries.values[i].parent)) {
       head = &entries.values[i];
-      printf("Head is: %s\n", head->name);
+      printf("Head is: %s\n", head->id);
     }
-    printf("Name: %s\n", entries.values[i].name);
+    printf("Name: %s\n", entries.values[i].id);
     printf("Size: %lu\n", sizeof(entries.values[i]));
-    printf("Parent: %s\n", entries.values[i].parent->name);
+    printf("Parent: %s\n", entries.values[i].parent->id);
     printf("Children: ");
     int c;
     for (c = 0; c < entries.values[i].children_len; c++) {
-      printf("%s ", entries.values[i].children[c]->name);
+      printf("%s ", entries.values[i].children[c]->id);
     }
     printf("\n");
-    printf("Template: %s\n", entries.values[i].template->name);
+    printf("Template: %s\n", entries.values[i].template->id);
   }
 
   exit(0);
