@@ -6,15 +6,29 @@
 
 {title}
 
+```text
+page title
 ```
-<title>page title</title>
+
+{id}
+
+```text
+entry_id
+```
+
+{template}
+
+```text
+template_id
 ```
 
 ### Navigation
 
-{nav}
+{nav}, {nav|hide}
 
-```
+Hides root entry from main navigation.
+
+```html
 <nav aria-label="primary">
   <ul>
     <li></li>
@@ -26,7 +40,7 @@
 
 {...}
 
-```
+```html
 <nav aria-label="breadcrumbs">
   <ul>
     <li></li>
@@ -44,9 +58,21 @@ outputs markdown content file
 
 {inc}
 
+hides h2 if there are no incoming links
+
+```css
+nav > h2 {
+  display: block;
+}
+
+nav > h2:only-child {
+  display: none;
+}
 ```
+
+```html
 <nav aria-labelledby="inc">
-  <h6 id="inc">Incoming Links</h6>
+  <h2 id="inc">Incoming Links</h2>
   <ul>
     <li></li>
   </ul>
@@ -60,16 +86,23 @@ outputs markdown content file
 [link name](http://) External Link
 [link name]({index}) Internal Link
 
-```
+```html
 <a href="http://">link name</a>
 <a href="link.html">{link name}</a>
 ```
 
 ### Headings
 
-`# , ## , ### , #### , ##### , ######`
-
+```text
+#
+##
+###
+####
+#####
+######
 ```
+
+```html
 <h1>
 <h2>
 <h3>
@@ -82,25 +115,25 @@ outputs markdown content file
 
 - UL
 
-```
+```html
 <ul>
   <li>UL</li>
 </ul>
 ```
 
-1. OL 
+1. OL
 
-```
+```html
 <ol>
    <li>OL</li>
-</ul>
+</ol>
 ```
 
 ### Text formatting
 
-**word** Bold <strong>word<strong>
-*word* Italic <em>word</em>
-~~word~~ Strikethrough <del>word</del>
+**word** Bold `<strong>word<strong>`
+*word* Italic `<em>word</em>`
+~~word~~ Strikethrough `<del>word</del>`
 
 ### Images
 
@@ -108,7 +141,7 @@ outputs markdown content file
 ![alt text]({link.jpg})
 ![alt text]({link.jpg} "This is a caption")
 
-```
+```html
 <img src="link.jpg" alt="alt text" />
 
 <figure>
