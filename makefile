@@ -11,7 +11,7 @@ OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 $(ODIR)/%.out: $(SRC_DIR)/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-main.app: $(OBJ)
+takwax.app: $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS)
 
 .PHONY: clean

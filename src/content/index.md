@@ -6,7 +6,6 @@ a second paragraph
 - list
 	- dlfj
 
-
 - list
 	## test
 a third paragraph

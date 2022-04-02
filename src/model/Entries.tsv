@@ -1,4 +1,5 @@
 entry_id	name	parent	template	header	footer
 index	Index	index	index	header	footer
-journal	Journal	index	content	header	footer
-about	About	journal	content	header	footer
+category	Category	index	NULL	NULL	NULL
+journal	Journal	category	content	header	footer
+about	About	category	content	header	footer
