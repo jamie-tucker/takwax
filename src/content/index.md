@@ -1,12 +1,13 @@
 This is a website
 a second paragraph
 
-    # this is a header
+# this is a header
 
 - list
-	- dlfj
+  - dlfj
 
 - list
-	## test
+
+## test
+
 a third paragraph
-

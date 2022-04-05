@@ -7,6 +7,7 @@
 #define CONTENT_DIR "src/content/"
 #define TEMPLATE_DIR "src/template/"
 #define OUTPUT_DIR "output/site/"
+#define TEMP_DIR "output/temp/"
 
 #define ENTRY_SIZE 32
 #define ENTRY_COUNT 100
@@ -18,12 +19,6 @@
 
 #pragma region Model
 
-typedef enum {
-  header = 1,
-  footer = 2,
-  content = 3
-} TemplateType;
-
 typedef struct Media {
   char filename[ENTRY_SIZE];
   char *alt_text, caption;
@@ -34,7 +29,6 @@ typedef struct Template {
   long body_len;
   char id[ENTRY_SIZE];
   char *body;
-  TemplateType type;
 } Template;
 
 typedef struct Templates {
@@ -56,8 +50,6 @@ typedef struct Entries {
   int length;
   struct Entry values[ENTRY_COUNT];
 } Entries;
-
-static void output_md_line(FILE *output, char *curLine, Entry *entry, Entries *entries);
 
 Entry *
 create_entry(Entries *entries, char *id, char *name) {
@@ -89,25 +81,10 @@ find_entry_in_entries(Entries *entries, char *id) {
   return find_entry(&entries->values[0], entries->length, id);
 }
 
-int get_type(char *type) {
-  if (strcmp(type, "header") == 0)
-    return 1;
-  else if (strcmp(type, "footer") == 0)
-    return 2;
-  else if (strcmp(type, "content") == 0)
-    return 3;
-  else
-    return 0;
-}
-
 Template *
-create_template(Templates *templates, char *id, char *type) {
+create_template(Templates *templates, char *id) {
   Template *template = &templates->values[templates->length++];
   strcpy(template->id, id);
-  if ((template->type = get_type(type)) == 0) {
-    printf("Incorrect Template Type %s", type);
-    return NULL;
-  }
 
   return template;
 }
@@ -139,197 +116,12 @@ get_file(char *dir, char *filename, char *ext, char *op) {
   return fopen(fullpath, op);
 }
 
-int parse_entries(Entries *entries, Templates *templates) {
-  FILE *entryFile = get_file(MODEL_DIR, "entries", ".tsv", "r");
+#pragma region Markdown
 
-  if (entryFile == NULL) {
-    printf("entries.tsv File Not Found: \n");
-    return 0;
-  }
-
-  char line[6 * ENTRY_SIZE];
-  printf("%s", fgets(line, sizeof line, entryFile));  // skip header
-
-  while (fgets(line, sizeof line, entryFile)) {
-    char *id = strtok(line, "\t\n");
-    char *name = strtok(NULL, "\t\n");
-    char *parent = strtok(NULL, "\t\n");
-    char *template = strtok(NULL, "\t\n");
-    char *header = strtok(NULL, "\t\n");
-    char *footer = strtok(NULL, "\t\n");
-
-    Entry *entryPtr = create_entry(entries, id, name);
-
-    entryPtr->parent = find_entry_in_entries(entries, parent);
-    entryPtr->parent->children[entryPtr->parent->children_len++] = entryPtr;
-
-    if (strcmp(template, "NULL") != 0) {
-      FILE *contentFile = get_file(CONTENT_DIR, id, ".md", "r");
-
-      if (contentFile == NULL) {
-        printf("File Not Found %s.md\n", id);
-        return 0;
-      }
-
-      fseek(contentFile, 0, SEEK_END);
-      entryPtr->content_len = ftell(contentFile);
-      fseek(contentFile, 0, SEEK_SET);
-      entryPtr->content = (char *)malloc(entryPtr->content_len);
-      if (entryPtr->content) {
-        fread(entryPtr->content, 1, entryPtr->content_len, contentFile);
-      } else {
-        printf("Not enough memory");
-        return 0;
-      }
-
-      fclose(contentFile);
-
-      entryPtr->template = find_template(templates, template);
-      entryPtr->header = find_template(templates, header);
-      entryPtr->footer = find_template(templates, footer);
-    }
-  }
-
-  fclose(entryFile);
-  return 1;
-}
-
-int parse_templates(Templates *templates) {
-  FILE *templateModel = get_file(MODEL_DIR, "templates", ".tsv", "r");
-
-  if (templateModel == NULL) {
-    printf("File Not Found: templates.tsv\n");
-    return 0;
-  }
-
-  char line[2 * ENTRY_SIZE];
-  printf("%s", fgets(line, sizeof line, templateModel));  // skip header
-
-  while (fgets(line, sizeof line, templateModel)) {
-    char *id = strtok(line, "\t\n");
-    char *type = strtok(NULL, "\t\n");
-
-    Template *templatePtr = create_template(templates, id, type);
-
-    if (templatePtr == NULL)
-      return 0;
-
-    FILE *templateFile = get_file(TEMPLATE_DIR, id, ".html", "r");
-
-    if (templateFile == NULL) {
-      printf("File Not Found: %s.html\n", id);
-      return 0;
-    }
-
-    fseek(templateFile, 0, SEEK_END);
-    templatePtr->body_len = ftell(templateFile);
-    fseek(templateFile, 0, SEEK_SET);
-    templatePtr->body = (char *)malloc(templatePtr->body_len);
-    if (templatePtr->body) {
-      fread(templatePtr->body, 1, templatePtr->body_len, templateFile);
-    } else {
-      printf("Not enough memory");
-      return 0;
-    }
-
-    fclose(templateFile);
-  }
-
-  fclose(templateModel);
-  return 1;
-}
-
-int parse(Entries *entries, Templates *templates) {
-  if (!parse_templates(templates)) {
-    printf("Error Parsing Templates\n");
-    return 0;
-  }
-
-  if (!parse_entries(entries, templates)) {
-    printf("Error Parsing Entries\n");
-    return 0;
-  }
-
-  return 1;
-}
-
-static void
-html_breadcrumbs(FILE *file, Entry *entry) {
-  fputs("<ul>\n", file);
-  Entry *entry_ptr = entry;
-  int i = 0;
-  Entry *crumbs[ENTRY_COUNT];
-  crumbs[i++] = entry_ptr;
-
-  while (entry_ptr != entry_ptr->parent) {
-    entry_ptr = entry_ptr->parent;
-    crumbs[i++] = entry_ptr;
-  }
-
-  while (i > 1) {
-    i--;
-    if (crumbs[i]->content != NULL) {
-      fprintf(file, "<li><a href=\"./%s.html\">%s</a> // </li>\n", crumbs[i]->id, crumbs[i]->name);
-    } else {
-      fprintf(file, "<li>%s // </li>\n", crumbs[i]->name);
-    }
-  }
-
-  fprintf(file, "<li>%s</li>\n", crumbs[0]->name);
-
-  fputs("</ul>\n", file);
-}
-
-static void
-html_nav(FILE *file, Entry *entry, Entry *root, int show_root) {
-  int i;
-  fputs("<ul>\n", file);
-
-  for (i = 0; i < root->children_len; i++) {
-    if (show_root == 0 && root == root->children[i]) {
-      // skip
-    } else if (root->children[i]->content != NULL) {
-      fprintf(
-          file,
-          "<li class=\"%s\"><a href=\"./%s.html\">%s</a></li>\n",
-          root->children[i] == entry ? "selected" : "",
-          root->children[i]->id, root->children[i]->name);
-    } else {
-      fprintf(file, "<li>%s</li>\n", root->children[i]->name);
-    }
-
-    if (root == root->children[i]) {
-      continue;
-    } else if (root->children[i]->children_len > 0) {
-      html_nav(file, entry, root->children[i], show_root);
-    }
-  }
-
-  fputs("</ul>\n", file);
-}
-
-static void
-html_inc_links(FILE *file, Entry *entry) {
-  if (entry->incoming_len <= 0) {
-    return;
-  }
-
-  int i;
-  fputs("\t<ul>\n", file);
-
-  for (i = 0; i < entry->incoming_len; i++) {
-    fprintf(file, "\t\t<li><a href=\"./%s.html\">%s</a></li>\n", entry->incoming[i]->id, entry->incoming[i]->name);
-
-    if (entry == entry->incoming[i]) {
-      continue;
-    }
-  }
-
-  fputs("\t</ul>\n", file);
-}
+static void md_line(FILE *output, char *curLine, Entry *entry, Entries *entries);
 
 static int
-html_img(FILE *file, char *curLine) {
+md_img(FILE *file, char *curLine) {
   char *start_ptr = strchr(curLine, '!');
   if (strncmp(start_ptr, "![", 2) == 0) {
     char *end_ptr = strchr(start_ptr + 1, ']');
@@ -343,7 +135,7 @@ html_img(FILE *file, char *curLine) {
 }
 
 static int
-html_link(FILE *file, char *curLine, Entry *entry, Entries *entries) {
+md_link(FILE *file, char *curLine, Entry *entry, Entries *entries) {
   char linkName[1024] = {'\0'};
   char linkURL[1024] = {'\0'};
   int externalLink = 0;
@@ -409,14 +201,14 @@ html_link(FILE *file, char *curLine, Entry *entry, Entries *entries) {
     fprintf(file, "<a href=\"%s\">%s</a>", linkURL, linkName);
 
   if (link_end_ptr)
-    output_md_line(file, link_end_ptr + 1, entry, entries);
+    md_line(file, link_end_ptr + 1, entry, entries);
 
   return 1;
 }
 
 static void
-output_md_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
-  if (html_link(output, curLine, entry, entries)) {
+md_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
+  if (md_link(output, curLine, entry, entries)) {
     // char *start_ptr = strchr(curLine, '{');
     // if (start_ptr) {
     //   char *end_ptr = strchr(start_ptr + 1, '}');
@@ -445,9 +237,10 @@ output_md_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
 static int
 reset_list(FILE *output, int listLevel) {
   while (listLevel > 0) {
-    fputs("</ul>\n", output);
+    fputs("\n</ul>", output);
     listLevel--;
   }
+
   return listLevel;
 }
 
@@ -471,7 +264,7 @@ is_header(char *curLine) {
 }
 
 static void
-output_md(FILE *output, Entry *entry, Entries *entries) {
+output_markdown(FILE *output, Entry *entry, Entries *entries) {
   char *curLine = entry->content;
   int prevIndent = 0, listLevel = 0;
   while (curLine) {
@@ -499,11 +292,11 @@ output_md(FILE *output, Entry *entry, Entries *entries) {
       sprintf(closeTag, "</h%i>", header);
       curLine += header + 1;
     } else if (strncmp(curLine, "- ", 2) == 0) {
-      strcpy(openTag, "<li>");
+      strcpy(openTag, "\n<li>");
       strcpy(closeTag, "</li>");
 
       if (listLevel == 0 || indent - prevIndent == TAB_SIZE) {
-        strcpy(openTag, "<ul>\n<li>");
+        strcpy(openTag, "\n<ul>\n<li>");
         listLevel++;
       } else if (indent < prevIndent) {
         int i;
@@ -519,22 +312,244 @@ output_md(FILE *output, Entry *entry, Entries *entries) {
       listLevel = reset_list(output, listLevel);
       strcpy(openTag, "<br />");
     } else if (*curLine != '\0') {
-      listLevel = reset_list(output, listLevel);
+      if (listLevel > 0) {
+        listLevel = reset_list(output, listLevel);
+        fputc('\n', output);
+      }
       strcpy(openTag, "<p>");
-      strcpy(closeTag, "</p>");
+      strcpy(closeTag, "</p>\n");
     } else {
       listLevel = reset_list(output, listLevel);
-      // reset?
     }
 
     fprintf(output, "%s", openTag);
-    output_md_line(output, curLine, entry, entries);
-    fprintf(output, "%s\n", closeTag);
+    md_line(output, curLine, entry, entries);
+    fprintf(output, "%s", closeTag);
 
     if (nextLine) *nextLine = '\n';  // then restore newline-char, just to be tidy
     curLine = nextLine ? (nextLine + 1) : NULL;
     prevIndent = indent;
   }
+
+  fseek(output, -1, SEEK_END);
+  fputc('\0', output);
+}
+
+int parse_content(Entries *entries) {
+  int i;
+
+  for (i = 0; i < entries->length; i++) {
+    Entry *entryPtr = &entries->values[i];
+
+    FILE *contentFile = get_file(CONTENT_DIR, entryPtr->id, ".md", "r");
+
+    if (contentFile == NULL) {
+      printf("File Not Found %s.md\n", entryPtr->id);
+      continue;
+    }
+
+    fseek(contentFile, 0, SEEK_END);
+    entryPtr->content_len = ftell(contentFile);
+    fseek(contentFile, 0, SEEK_SET);
+    entryPtr->content = (char *)malloc(entryPtr->content_len);
+
+    FILE *output = get_file(TEMP_DIR, entryPtr->id, ".txt", "w+");
+
+    if (output == NULL) {
+      printf("File Not Found: %s.txt\n", entryPtr->id);
+      return 0;
+    }
+
+    // TODO: clean this up
+    fread(entryPtr->content, 1, entryPtr->content_len, contentFile);
+    output_markdown(output, entryPtr, entries);
+    free(entryPtr->content);
+    fseek(output, 0, SEEK_END);
+    entryPtr->content_len = ftell(output);
+    fseek(output, 0, SEEK_SET);
+    entryPtr->content = (char *)malloc(entryPtr->content_len);
+    fread(entryPtr->content, 1, entryPtr->content_len, output);
+
+    fclose(output);
+    fclose(contentFile);
+  }
+
+  return 1;
+}
+
+#pragma endregion
+
+int parse_entries(Entries *entries, Templates *templates) {
+  FILE *entryFile = get_file(MODEL_DIR, "entries", ".tsv", "r");
+
+  if (entryFile == NULL) {
+    printf("entries.tsv File Not Found: \n");
+    return 0;
+  }
+
+  char line[6 * ENTRY_SIZE];
+  printf("%s", fgets(line, sizeof line, entryFile));  // skip header
+
+  while (fgets(line, sizeof line, entryFile)) {
+    char *id = strtok(line, "\t\n");
+    char *name = strtok(NULL, "\t\n");
+    char *parent = strtok(NULL, "\t\n");
+    char *template = strtok(NULL, "\t\n");
+    char *header = strtok(NULL, "\t\n");
+    char *footer = strtok(NULL, "\t\n");
+
+    Entry *entryPtr = create_entry(entries, id, name);
+
+    entryPtr->parent = find_entry_in_entries(entries, parent);
+    entryPtr->parent->children[entryPtr->parent->children_len++] = entryPtr;
+
+    if (strcmp(template, "NULL") != 0) {
+      entryPtr->template = find_template(templates, template);
+      entryPtr->header = find_template(templates, header);
+      entryPtr->footer = find_template(templates, footer);
+    }
+  }
+
+  fclose(entryFile);
+  return 1;
+}
+
+int parse_templates(Templates *templates) {
+  FILE *templateModel = get_file(MODEL_DIR, "templates", ".tsv", "r");
+
+  if (templateModel == NULL) {
+    printf("File Not Found: templates.tsv\n");
+    return 0;
+  }
+
+  char line[2 * ENTRY_SIZE];
+  printf("%s", fgets(line, sizeof line, templateModel));  // skip header
+
+  while (fgets(line, sizeof line, templateModel)) {
+    char *id = strtok(line, "\t\n");
+
+    Template *templatePtr = create_template(templates, id);
+
+    if (templatePtr == NULL)
+      return 0;
+
+    FILE *templateFile = get_file(TEMPLATE_DIR, id, ".html", "r");
+
+    if (templateFile == NULL) {
+      printf("File Not Found: %s.html\n", id);
+      return 0;
+    }
+
+    fseek(templateFile, 0, SEEK_END);
+    templatePtr->body_len = ftell(templateFile);
+    fseek(templateFile, 0, SEEK_SET);
+    templatePtr->body = (char *)malloc(templatePtr->body_len);
+    if (templatePtr->body) {
+      fread(templatePtr->body, 1, templatePtr->body_len, templateFile);
+    } else {
+      printf("Not enough memory");
+      return 0;
+    }
+
+    fclose(templateFile);
+  }
+
+  fclose(templateModel);
+  return 1;
+}
+
+int parse(Entries *entries, Templates *templates) {
+  if (!parse_templates(templates)) {
+    printf("Error Parsing Templates\n");
+    return 0;
+  }
+
+  if (!parse_entries(entries, templates)) {
+    printf("Error Parsing Entries\n");
+    return 0;
+  }
+
+  if (!parse_content(entries)) {
+    printf("Error Parsing Markdown\n");
+    return 0;
+  }
+
+  return 1;
+}
+
+static void
+html_breadcrumbs(FILE *file, Entry *entry) {
+  fputs("<ul>\n", file);
+  Entry *entry_ptr = entry;
+  int i = 0;
+  Entry *crumbs[ENTRY_COUNT];
+  crumbs[i++] = entry_ptr;
+
+  while (entry_ptr != entry_ptr->parent) {
+    entry_ptr = entry_ptr->parent;
+    crumbs[i++] = entry_ptr;
+  }
+
+  while (i > 1) {
+    i--;
+    if (crumbs[i]->content != NULL) {
+      fprintf(file, "<li><a href=\"./%s.html\">%s</a> // </li>\n", crumbs[i]->id, crumbs[i]->name);
+    } else {
+      fprintf(file, "<li>%s // </li>\n", crumbs[i]->name);
+    }
+  }
+
+  fprintf(file, "<li>%s</li>\n", crumbs[0]->name);
+
+  fputs("</ul>", file);
+}
+
+static void
+html_nav(FILE *file, Entry *entry, Entry *root, int show_root) {
+  int i;
+  fputs("<ul>\n", file);
+
+  for (i = 0; i < root->children_len; i++) {
+    if (show_root == 0 && root == root->children[i]) {
+      // skip
+    } else if (root->children[i]->content != NULL) {
+      fprintf(
+          file,
+          "<li class=\"%s\"><a href=\"./%s.html\">%s</a></li>\n",
+          root->children[i] == entry ? "selected" : "",
+          root->children[i]->id, root->children[i]->name);
+    } else {
+      fprintf(file, "<li>%s</li>\n", root->children[i]->name);
+    }
+
+    if (root == root->children[i]) {
+      continue;
+    } else if (root->children[i]->children_len > 0) {
+      html_nav(file, entry, root->children[i], show_root);
+    }
+  }
+
+  fputs("</ul>", file);
+}
+
+static void
+html_inc_links(FILE *file, Entry *entry) {
+  if (entry->incoming_len <= 0) {
+    return;
+  }
+
+  int i;
+  fputs("\t<ul>\n", file);
+
+  for (i = 0; i < entry->incoming_len; i++) {
+    fprintf(file, "\t\t<li><a href=\"./%s.html\">%s</a></li>\n", entry->incoming[i]->id, entry->incoming[i]->name);
+
+    if (entry == entry->incoming[i]) {
+      continue;
+    }
+  }
+
+  fputs("\t</ul>", file);
 }
 
 static void
@@ -562,7 +577,7 @@ output_html_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
     } else if (strncmp("inc", start_ptr + 1, size) == 0) {
       html_inc_links(output, entry);
     } else if (strncmp("content", start_ptr + 1, size) == 0) {
-      output_md(output, entry, entries);
+      fputs(entry->content, output);
     }
 
     *start_ptr = '{';
@@ -624,36 +639,13 @@ static Templates templates;
 int main(void) {
   if (!parse(&entries, &templates)) {
     printf("Parsing Error\n");
-    exit(1);
+    return 1;
   }
-
-  // TODO: Link files. parse content for links.
 
   if (!generate(&entries, &templates)) {
     printf("Generating Error\n");
-    exit(1);
+    return 1;
   }
 
-  // // Print Debugs
-  // int i;
-  // Entry *head = NULL;
-
-  // for (i = 0; i < entries.length; i++) {
-  //   if (head == NULL && (&entries.values[i] == entries.values[i].parent)) {
-  //     head = &entries.values[i];
-  //     printf("Head is: %s\n", head->id);
-  //   }
-  //   printf("Name: %s\n", entries.values[i].id);
-  //   printf("Size: %lu\n", sizeof(entries.values[i]));
-  //   printf("Parent: %s\n", entries.values[i].parent->id);
-  //   printf("Children: ");
-  //   int c;
-  //   for (c = 0; c < entries.values[i].children_len; c++) {
-  //     printf("%s ", entries.values[i].children[c]->id);
-  //   }
-  //   printf("\n");
-  //   printf("Template: %s\n", entries.values[i].template->id);
-  // }
-
-  exit(0);
+  return 0;
 }
