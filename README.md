@@ -19,7 +19,7 @@ Consider a future device … in which an individual stores all his books, record
 
 The intent of this site is to become a depot for my journals, research, and projects. The entire body of work should exist in plain text. The creation of a new page should have minimal overhead with the option to embed multi-media. Each entry should be interconnected, so that one may use the site more akin to flipping through pages of a physical notebook.
 
-## TODO:
+## TODO
 
 - [x] Basic Model
   - [x] TSV for Entry
@@ -50,11 +50,12 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [ ] **Strong**
       - [ ] ~~Strikethrough~~
       - [ ] *EM*
-- [ ] Move MD to parse stage in order to capture Incoming links?
+- [x] Move MD to parse stage in order to capture Incoming links?
 - [x] Parse HTML Template.
 - [x] Create HTML Output.
 - [ ] Add support for {blog} so that they can be output as <article> in a loop on a category page with links to pages with formatting.
 - [ ] Error handling
 
-## LICENSE:
+## LICENSE
+
 The source code is supplied as-is under the [MIT License](https://github.com/jamie-tucker/takwax/blob/main/LICENSE) and all media and written site content are [BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) unless otherwise noted.
