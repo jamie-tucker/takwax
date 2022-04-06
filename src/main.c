@@ -41,7 +41,7 @@ typedef struct Entry {
   long content_len;
   char id[ENTRY_SIZE];
   char name[ENTRY_SIZE];
-  char *content;
+  char content[1024 * 1024];
   struct Template *header, *footer, *template;
   struct Entry *parent, *children[ENTRY_COUNT], *incoming[ENTRY_COUNT];
 } Entry;
@@ -106,7 +106,7 @@ find_template(Templates *templates, char *id) {
 
 #pragma endregion
 
-FILE *
+static FILE *
 get_file(char *dir, char *filename, char *ext, char *op) {
   char fullpath[1024] = {"\0"};
   strcat(fullpath, dir);
@@ -114,6 +114,16 @@ get_file(char *dir, char *filename, char *ext, char *op) {
   strcat(fullpath, ext);
   printf("Opening File: \"%s\"\n", fullpath);
   return fopen(fullpath, op);
+}
+
+static int
+delete_file(char *dir, char *filename, char *ext) {
+  char fullpath[1024] = {"\0"};
+  strcat(fullpath, dir);
+  strcat(fullpath, filename);
+  strcat(fullpath, ext);
+  printf("Removing File: \"%s\"\n", fullpath);
+  return remove(fullpath);
 }
 
 #pragma region Markdown
@@ -245,6 +255,22 @@ reset_list(FILE *output, int listLevel) {
 }
 
 static int
+is_html(char *curLine) {
+  if (strncmp(curLine, "<", 1) == 0) {
+    char *ptr = curLine;
+    while (*ptr != '\n') {
+      if (strncmp(ptr, ">", 1) == 0) {
+        return 1;
+      }
+
+      ptr++;
+    }
+  }
+
+  return 0;
+}
+
+static int
 is_header(char *curLine) {
   if (strncmp(curLine, "# ", 2) == 0) {
     return 1;
@@ -264,8 +290,8 @@ is_header(char *curLine) {
 }
 
 static void
-output_markdown(FILE *output, Entry *entry, Entries *entries) {
-  char *curLine = entry->content;
+output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
+  char *curLine = buffer;
   int prevIndent = 0, listLevel = 0;
   while (curLine) {
     char *nextLine = strchr(curLine, '\n');
@@ -291,20 +317,32 @@ output_markdown(FILE *output, Entry *entry, Entries *entries) {
       sprintf(openTag, "<h%i>", header);
       sprintf(closeTag, "</h%i>", header);
       curLine += header + 1;
+    } else if (is_html(curLine)) {
+      // do nothing
     } else if (strncmp(curLine, "- ", 2) == 0) {
-      strcpy(openTag, "\n<li>");
+      strcpy(openTag, "<li>");
       strcpy(closeTag, "</li>");
 
       if (listLevel == 0 || indent - prevIndent == TAB_SIZE) {
-        strcpy(openTag, "\n<ul>\n<li>");
+        strcpy(openTag, "<ul>\n<li>");
         listLevel++;
       } else if (indent < prevIndent) {
-        int i;
-        for (i = 0; i < (prevIndent - indent) / TAB_SIZE; i++) {
-          strcpy(&openTag[i * 6], "\n</ul>");
+        int i, tagIndex;
+        for (i = 0, tagIndex = 0; i < (prevIndent - indent) / TAB_SIZE; i++) {
+          if (i == 0) {
+            strcpy(&openTag[0], "</ul>");
+            tagIndex = 5;
+          } else {
+            strcpy(&openTag[tagIndex], "\n</ul>");
+            tagIndex += 6;
+          }
           listLevel--;
         }
-        strcpy(&openTag[i * 6], "\n<li>");
+
+        if (i == 0)
+          strcpy(&openTag[0], "<li>");
+        else
+          strcpy(&openTag[tagIndex], "\n<li>");
       }
 
       curLine += 2;
@@ -312,16 +350,19 @@ output_markdown(FILE *output, Entry *entry, Entries *entries) {
       listLevel = reset_list(output, listLevel);
       strcpy(openTag, "<br />");
     } else if (*curLine != '\0') {
-      if (listLevel > 0) {
-        listLevel = reset_list(output, listLevel);
-        fputc('\n', output);
-      }
+      listLevel = reset_list(output, listLevel);
       strcpy(openTag, "<p>");
-      strcpy(closeTag, "</p>\n");
+      strcpy(closeTag, "</p>");
     } else {
       listLevel = reset_list(output, listLevel);
     }
 
+    fputc('\n', output);
+
+    int i;
+    for (i = 0; i < indent; i++) {
+      fputc(' ', output);
+    }
     fprintf(output, "%s", openTag);
     md_line(output, curLine, entry, entries);
     fprintf(output, "%s", closeTag);
@@ -330,13 +371,12 @@ output_markdown(FILE *output, Entry *entry, Entries *entries) {
     curLine = nextLine ? (nextLine + 1) : NULL;
     prevIndent = indent;
   }
-
-  fseek(output, -1, SEEK_END);
-  fputc('\0', output);
 }
 
 int parse_content(Entries *entries) {
   int i;
+  char contentBuffer[1024 * 1024];
+  long contentBufferLength = 0;
 
   for (i = 0; i < entries->length; i++) {
     Entry *entryPtr = &entries->values[i];
@@ -349,9 +389,10 @@ int parse_content(Entries *entries) {
     }
 
     fseek(contentFile, 0, SEEK_END);
-    entryPtr->content_len = ftell(contentFile);
+    contentBufferLength = ftell(contentFile);
     fseek(contentFile, 0, SEEK_SET);
-    entryPtr->content = (char *)malloc(entryPtr->content_len);
+    fread(contentBuffer, contentBufferLength + 1, 1, contentFile);
+    fclose(contentFile);
 
     FILE *output = get_file(TEMP_DIR, entryPtr->id, ".txt", "w+");
 
@@ -360,18 +401,13 @@ int parse_content(Entries *entries) {
       return 0;
     }
 
-    // TODO: clean this up
-    fread(entryPtr->content, 1, entryPtr->content_len, contentFile);
-    output_markdown(output, entryPtr, entries);
-    free(entryPtr->content);
+    output_markdown(output, contentBuffer, entryPtr, entries);
     fseek(output, 0, SEEK_END);
     entryPtr->content_len = ftell(output);
     fseek(output, 0, SEEK_SET);
-    entryPtr->content = (char *)malloc(entryPtr->content_len);
-    fread(entryPtr->content, 1, entryPtr->content_len, output);
-
+    fread(entryPtr->content, entryPtr->content_len + 1, 1, output);
     fclose(output);
-    fclose(contentFile);
+    delete_file(TEMP_DIR, entryPtr->id, ".txt");
   }
 
   return 1;
@@ -492,7 +528,7 @@ html_breadcrumbs(FILE *file, Entry *entry) {
 
   while (i > 1) {
     i--;
-    if (crumbs[i]->content != NULL) {
+    if (crumbs[i]->content_len > 0) {
       fprintf(file, "<li><a href=\"./%s.html\">%s</a> // </li>\n", crumbs[i]->id, crumbs[i]->name);
     } else {
       fprintf(file, "<li>%s // </li>\n", crumbs[i]->name);
@@ -512,7 +548,7 @@ html_nav(FILE *file, Entry *entry, Entry *root, int show_root) {
   for (i = 0; i < root->children_len; i++) {
     if (show_root == 0 && root == root->children[i]) {
       // skip
-    } else if (root->children[i]->content != NULL) {
+    } else if (root->children[i]->content_len > 0) {
       fprintf(
           file,
           "<li class=\"%s\"><a href=\"./%s.html\">%s</a></li>\n",
@@ -604,7 +640,7 @@ output_html(FILE *output, char *curLine, Entry *entry, Entries *entries) {
 }
 
 int output_file(Entry *entry, Entries *entries) {
-  if (entry->content != NULL) {
+  if (entry->content_len > 0) {
     FILE *output = get_file(OUTPUT_DIR, entry->id, ".html", "w+");
     if (output == NULL) {
       printf("File Not Found: %s.html\n", entry->id);
