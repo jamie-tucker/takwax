@@ -15,6 +15,9 @@
 // Markdown Settings
 #define TAB_SIZE 2
 
+#define OL "ol"
+#define UL "ul"
+
 #define COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
 #pragma region Model
@@ -102,6 +105,36 @@ find_template(Templates *templates, char *id) {
   printf("Template Not Found: %s\n", id);
 
   return NULL;
+}
+
+typedef enum list_type {
+  ul = 2,
+  ol = 3
+} list_type;
+
+typedef struct Queue {
+  int count;
+  int list[32];
+} Queue;
+
+static void
+queue_push(Queue *queue, int listType) {
+  queue->list[queue->count++] = listType;
+}
+
+static char *
+queue_pop(Queue *queue) {
+  int type = queue->list[--(queue->count)];
+  switch (type) {
+    case (int)ol:
+    case (int)ol + 1:
+    case (int)ol + 2:
+      return OL;
+    case (int)ul:
+      return UL;
+    default:
+      return NULL;
+  }
 }
 
 #pragma endregion
@@ -244,11 +277,16 @@ md_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
   }
 }
 
-static int
-reset_list(FILE *output, int listLevel) {
-  while (listLevel > 0) {
-    fputs("\n</ul>", output);
-    listLevel--;
+static Queue *
+reset_list(FILE *output, Queue *listLevel, int listOpen) {
+  while (listLevel->count > 0) {
+    if (listOpen) {
+      fputs("\n</li>", output);
+    }
+    fprintf(output, "\n</%s>", queue_pop(listLevel));
+    if (!listOpen && listLevel->count > 0) {
+      fputs("</li>", output);
+    }
   }
 
   return listLevel;
@@ -289,10 +327,30 @@ is_header(char *curLine) {
   return 0;
 }
 
+static int
+is_list(char *curLine) {
+  if (strncmp(curLine, "- ", 2) == 0) {
+    return (int)ul;
+  } else if (isdigit(*curLine) && strncmp(curLine + 1, ". ", 2) == 0) {
+    return (int)ol;
+  } else if (isdigit(*curLine) && isdigit(*(curLine + 1)) && strncmp(curLine + 2, ". ", 2) == 0) {
+    return (int)ol + 1;
+  } else if (isdigit(*curLine) && isdigit(*(curLine + 1)) && isdigit(*(curLine + 2)) && strncmp(curLine + 3, ". ", 2) == 0) {
+    return (int)ol + 2;
+  }
+
+  return 0;
+}
+
 static void
 output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
   char *curLine = buffer;
-  int prevIndent = 0, listLevel = 0;
+  int prevIndent = 0;
+  Queue *listLevel = (Queue *)malloc(sizeof(Queue));
+  memset(listLevel, 0, sizeof(Queue));
+  listLevel->count = 0;
+  int codeOpen = 0, listOpen = 0;
+
   while (curLine) {
     char *nextLine = strchr(curLine, '\n');
     if (nextLine) *nextLine = '\0';  // temporarily terminate the current line
@@ -311,50 +369,101 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
       curLine++;
     }
 
-    int header = is_header(curLine);
-    if (header > 0 && indent <= TAB_SIZE * 2) {
-      listLevel = reset_list(output, listLevel);
+    int header, listType;
+    if ((header = is_header(curLine)) > 0 && indent <= TAB_SIZE * 2) {
+      listLevel = reset_list(output, listLevel, listOpen);
+      listOpen = 0;
       sprintf(openTag, "<h%i>", header);
       sprintf(closeTag, "</h%i>", header);
       curLine += header + 1;
-    } else if (is_html(curLine)) {
-      // do nothing
-    } else if (strncmp(curLine, "- ", 2) == 0) {
-      strcpy(openTag, "<li>");
-      strcpy(closeTag, "</li>");
+    } else if (strncmp(curLine, "```", 3) == 0) {
+      curLine += 3;
+      while (isblank(*curLine)) {
+        curLine++;
+      }
 
-      if (listLevel == 0 || indent - prevIndent == TAB_SIZE) {
-        strcpy(openTag, "<ul>\n<li>");
-        listLevel++;
+      if (codeOpen) {
+        strcpy(openTag, "</code>");
+        codeOpen = 0;
+      } else {
+        sprintf(openTag, "<code class=\"%s\">", curLine);
+        codeOpen = 1;
+      }
+
+      while (*curLine != '\0')
+        curLine++;
+    } else if (codeOpen) {
+      // TODO: parse code lines
+    } else if (is_html(curLine)) {
+      // TODO: do nothing
+    } else if ((listType = is_list(curLine))) {
+      if (listLevel->count == 0 || indent - prevIndent == TAB_SIZE) {
+        strcpy(&openTag[0], "<");
+        switch (listType) {
+          case (int)ol:
+            strcpy(&openTag[1], OL);
+            break;
+          case (int)ul:
+            strcpy(&openTag[1], UL);
+            break;
+        }
+        strcpy(&openTag[3], ">\n<li>");
+        listOpen = 1;
+        queue_push(listLevel, listType);
       } else if (indent < prevIndent) {
         int i, tagIndex;
         for (i = 0, tagIndex = 0; i < (prevIndent - indent) / TAB_SIZE; i++) {
           if (i == 0) {
-            strcpy(&openTag[0], "</ul>");
-            tagIndex = 5;
+            strcpy(&openTag[0], "</li>\n");
+            strcpy(&openTag[6], "</");
+            strcpy(&openTag[8], queue_pop(listLevel));
+            strcpy(&openTag[10], ">");
+            tagIndex = 11;
           } else {
-            strcpy(&openTag[tagIndex], "\n</ul>");
-            tagIndex += 6;
+            strcpy(&openTag[tagIndex], "\n</li>");
+            strcpy(&openTag[tagIndex + 6], "\n</");
+            strcpy(&openTag[tagIndex + 9], queue_pop(listLevel));
+            strcpy(&openTag[tagIndex + 11], ">");
+            tagIndex += 12;
           }
-          listLevel--;
         }
 
-        if (i == 0)
-          strcpy(&openTag[0], "<li>");
-        else
-          strcpy(&openTag[tagIndex], "\n<li>");
+        // don't know if I still need this
+        // if (i == 0)
+        //   strcpy(&openTag[0], "<li>");
+        // else
+        strcpy(&openTag[tagIndex], "\n</li>\n<li>");
+
+        listOpen = 1;
+      } else {
+        if (listOpen) {
+          strcpy(openTag, "</li>\n<li>");
+        } else {
+          strcpy(openTag, "<li>");
+        }
+
+        listOpen = 1;
       }
 
-      curLine += 2;
+      curLine += listType;
     } else if (*curLine == '\0' && *(curLine + 1) == '\n') {
-      listLevel = reset_list(output, listLevel);
+      listLevel = reset_list(output, listLevel, listOpen);
+      listOpen = 0;
       strcpy(openTag, "<br />");
     } else if (*curLine != '\0') {
-      listLevel = reset_list(output, listLevel);
+      if (indent > prevIndent && listLevel->count > 0) {
+        indent = prevIndent;
+        strcpy(closeTag, "</p></li>");
+        listOpen = 0;
+      } else {
+        listLevel = reset_list(output, listLevel, listOpen);
+        listOpen = 0;
+        strcpy(closeTag, "</p>");
+      }
       strcpy(openTag, "<p>");
-      strcpy(closeTag, "</p>");
     } else {
-      listLevel = reset_list(output, listLevel);
+      listLevel = reset_list(output, listLevel, listOpen);
+      listOpen = 0;
     }
 
     fputc('\n', output);
@@ -541,9 +650,12 @@ html_breadcrumbs(FILE *file, Entry *entry) {
 }
 
 static void
-html_nav(FILE *file, Entry *entry, Entry *root, int show_root) {
+html_nav(FILE *file, Entry *entry, Entry *root, int show_root, int level) {
   int i;
-  fputs("<ul>\n", file);
+  if (level > 0)
+    fputs("\n<ul>\n", file);
+  else
+    fputs("<ul>\n", file);
 
   for (i = 0; i < root->children_len; i++) {
     if (show_root == 0 && root == root->children[i]) {
@@ -551,18 +663,20 @@ html_nav(FILE *file, Entry *entry, Entry *root, int show_root) {
     } else if (root->children[i]->content_len > 0) {
       fprintf(
           file,
-          "<li class=\"%s\"><a href=\"./%s.html\">%s</a></li>\n",
+          "<li class=\"%s\"><a href=\"./%s.html\">%s</a>",
           root->children[i] == entry ? "selected" : "",
           root->children[i]->id, root->children[i]->name);
     } else {
-      fprintf(file, "<li>%s</li>\n", root->children[i]->name);
+      fprintf(file, "<li>%s", root->children[i]->name);
     }
 
     if (root == root->children[i]) {
       continue;
     } else if (root->children[i]->children_len > 0) {
-      html_nav(file, entry, root->children[i], show_root);
+      html_nav(file, entry, root->children[i], show_root, level + 1);
     }
+
+    fputs("</li>\n", file);
   }
 
   fputs("</ul>", file);
@@ -605,9 +719,9 @@ output_html_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
     } else if ((strncmp("template", start_ptr + 1, size) == 0)) {
       fprintf(output, "%s", entry->template->id);
     } else if (strncmp("nav", start_ptr + 1, size) == 0) {
-      html_nav(output, entry, &entries->values[0], 1);
+      html_nav(output, entry, &entries->values[0], 1, 0);
     } else if (strncmp("nav|hide", start_ptr + 1, size) == 0) {
-      html_nav(output, entry, &entries->values[0], 0);
+      html_nav(output, entry, &entries->values[0], 0, 0);
     } else if (strncmp("...", start_ptr + 1, size) == 0) {
       html_breadcrumbs(output, entry);
     } else if (strncmp("inc", start_ptr + 1, size) == 0) {
