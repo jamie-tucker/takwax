@@ -21,6 +21,19 @@
 #define TRUE 1;
 #define FALSE 0;
 
+#define _S3(s1, R, s2) (strcmp((s1), (s2)) R 0)
+#define _S2(s1, s2) (strcmp((s1), (s2)) == 0)
+#define _SN4(s1, R, s2, n) (strncmp((s1), (s2), (n)) R 0)
+#define _SN3(s1, s2, n) (strncmp((s1), (s2), (n)) == 0)
+#define GET_S(_1, _2, _3, NAME, ...) NAME
+#define STRCMP(...)            \
+  GET_S(__VA_ARGS__, _S3, _S2) \
+  (__VA_ARGS__)
+#define GET_SN(_1, _2, _3, _4, NAME, ...) NAME
+#define STRNCMP(...)              \
+  GET_SN(__VA_ARGS__, _SN4, _SN3) \
+  (__VA_ARGS__)
+
 #define COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
 #pragma region Model
@@ -74,7 +87,7 @@ find_entry(Entry *entry_start, int length, char *id) {
 
   for (i = 0; i < length; ++i) {
     Entry *entry_ptr = entry_start + i;
-    if (strcmp(id, entry_ptr->id) == 0) {
+    if (STRCMP(id, entry_ptr->id)) {
       return entry_ptr;
     }
   }
@@ -100,7 +113,7 @@ find_template(Templates *templates, char *id) {
   int i;
 
   for (i = 0; i < templates->length; ++i) {
-    if (strcmp(id, templates->values[i].id) == 0) {
+    if (STRCMP(id, templates->values[i].id)) {
       return &templates->values[i];
     }
   }
@@ -169,7 +182,7 @@ static void md_line(FILE *output, char *curLine, int lineLength, Entry *entry, E
 static int
 md_img(FILE *file, char *curLine) {
   char *start_ptr = strchr(curLine, '!');
-  if (strncmp(start_ptr, "![", 2) == 0) {
+  if (STRNCMP(start_ptr, "![", 2)) {
     char *end_ptr = strchr(start_ptr + 1, ']');
   } else {
     return FALSE;
@@ -191,7 +204,7 @@ md_link(FILE *file, char *curLine, int lineLength, Entry *entry, Entries *entrie
     char *end_ptr = strchr(start_ptr + 1, ']');
     char *link_ptr;
 
-    if (strncmp(end_ptr, "]({", 3) == 0) {
+    if (STRNCMP(end_ptr, "]({", 3)) {
       link_ptr = end_ptr + 3;
       link_end_ptr = strchr(link_ptr, '}');
       *link_end_ptr = '\0';
@@ -208,13 +221,13 @@ md_link(FILE *file, char *curLine, int lineLength, Entry *entry, Entries *entrie
 
       *link_end_ptr = '}';
       link_end_ptr++;
-    } else if (strncmp(end_ptr, "](#", 3) == 0) {
+    } else if (STRNCMP(end_ptr, "](#", 3)) {
       link_ptr = end_ptr + 2;  // include the #
       link_end_ptr = strchr(link_ptr, ')');
       *link_end_ptr = '\0';
       sprintf(linkURL, "%s", link_ptr);
       *link_end_ptr = ')';
-    } else if (strncmp(end_ptr, "](", 2) == 0) {
+    } else if (STRNCMP(end_ptr, "](", 2)) {
       link_ptr = end_ptr + 2;
       link_end_ptr = strchr(link_ptr, ')');
 
@@ -223,7 +236,7 @@ md_link(FILE *file, char *curLine, int lineLength, Entry *entry, Entries *entrie
       *link_end_ptr = ')';
       externalLink = 1;
     } else {
-      return 0;
+      return FALSE;
     }
 
     *start_ptr = '\0';
@@ -238,7 +251,7 @@ md_link(FILE *file, char *curLine, int lineLength, Entry *entry, Entries *entrie
 
     *start_ptr = '[';
   } else {
-    return 0;
+    return FALSE;
   }
 
   if (externalLink)
@@ -249,7 +262,7 @@ md_link(FILE *file, char *curLine, int lineLength, Entry *entry, Entries *entrie
   if (link_end_ptr)
     md_line(file, link_end_ptr + 1, lineLength - (link_end_ptr - curLine), entry, entries);
 
-  return 1;
+  return TRUE;
 }
 
 static void
@@ -317,52 +330,52 @@ reset_list(FILE *output, Queue *listLevel, int listOpen) {
 
 static int
 is_html(char *curLine) {
-  if (strncmp(curLine, "<", 1) == 0) {
+  if (STRNCMP(curLine, "<", 1)) {
     char *ptr = curLine;
     while (*ptr != '\n') {
-      if (strncmp(ptr, ">", 1) == 0) {
-        return 1;
+      if (STRNCMP(ptr, ">", 1)) {
+        return TRUE;
       }
 
       ptr++;
     }
   }
 
-  return 0;
+  return FALSE;
 }
 
 static int
 is_header(char *curLine) {
-  if (strncmp(curLine, "# ", 2) == 0) {
+  if (STRNCMP(curLine, "# ", 2)) {
     return 1;
-  } else if (strncmp(curLine, "## ", 3) == 0) {
+  } else if (STRNCMP(curLine, "## ", 3)) {
     return 2;
-  } else if (strncmp(curLine, "### ", 4) == 0) {
+  } else if (STRNCMP(curLine, "### ", 4)) {
     return 3;
-  } else if (strncmp(curLine, "#### ", 5) == 0) {
+  } else if (STRNCMP(curLine, "#### ", 5)) {
     return 4;
-  } else if (strncmp(curLine, "##### ", 6) == 0) {
+  } else if (STRNCMP(curLine, "##### ", 6)) {
     return 5;
-  } else if (strncmp(curLine, "###### ", 7) == 0) {
+  } else if (STRNCMP(curLine, "###### ", 7)) {
     return 6;
   }
 
-  return 0;
+  return FALSE;
 }
 
 static int
 is_list(char *curLine) {
-  if (strncmp(curLine, "- ", 2) == 0) {
+  if (STRNCMP(curLine, "- ", 2)) {
     return (int)ul;
-  } else if (isdigit(*curLine) && strncmp(curLine + 1, ". ", 2) == 0) {
+  } else if (isdigit(*curLine) && STRNCMP(curLine + 1, ". ", 2)) {
     return (int)ol;
-  } else if (isdigit(*curLine) && isdigit(*(curLine + 1)) && strncmp(curLine + 2, ". ", 2) == 0) {
+  } else if (isdigit(*curLine) && isdigit(*(curLine + 1)) && STRNCMP(curLine + 2, ". ", 2)) {
     return (int)ol + 1;
-  } else if (isdigit(*curLine) && isdigit(*(curLine + 1)) && isdigit(*(curLine + 2)) && strncmp(curLine + 3, ". ", 2) == 0) {
+  } else if (isdigit(*curLine) && isdigit(*(curLine + 1)) && isdigit(*(curLine + 2)) && STRNCMP(curLine + 3, ". ", 2)) {
     return (int)ol + 2;
   }
 
-  return 0;
+  return FALSE;
 }
 
 static void
@@ -395,7 +408,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     }
 
     int header, listType;
-    if (strncmp(curLine, "```", 3) == 0) {
+    if (STRNCMP(curLine, "```", 3)) {
       curLine += 3;
       while (isblank(*curLine)) {
         curLine++;
@@ -533,7 +546,7 @@ int parse_content(Entries *entries) {
 
     if (output == NULL) {
       printf("File Not Found: %s.txt\n", entryPtr->id);
-      return 0;
+      return FALSE;
     }
 
     output_markdown(output, contentBuffer, entryPtr, entries);
@@ -545,7 +558,7 @@ int parse_content(Entries *entries) {
     delete_file(TEMP_DIR, entryPtr->id, ".txt");
   }
 
-  return 1;
+  return TRUE;
 }
 
 #pragma endregion
@@ -555,7 +568,7 @@ int parse_entries(Entries *entries, Templates *templates) {
 
   if (entryFile == NULL) {
     printf("entries.tsv File Not Found: \n");
-    return 0;
+    return FALSE;
   }
 
   char line[6 * ENTRY_SIZE];
@@ -574,7 +587,7 @@ int parse_entries(Entries *entries, Templates *templates) {
     entryPtr->parent = find_entry_in_entries(entries, parent);
     entryPtr->parent->children[entryPtr->parent->children_len++] = entryPtr;
 
-    if (strcmp(template, "NULL") != 0) {
+    if (STRCMP(template, !=, "NULL")) {
       entryPtr->template = find_template(templates, template);
       entryPtr->header = find_template(templates, header);
       entryPtr->footer = find_template(templates, footer);
@@ -582,7 +595,7 @@ int parse_entries(Entries *entries, Templates *templates) {
   }
 
   fclose(entryFile);
-  return 1;
+  return TRUE;
 }
 
 int parse_templates(Templates *templates) {
@@ -590,7 +603,7 @@ int parse_templates(Templates *templates) {
 
   if (templateModel == NULL) {
     printf("File Not Found: templates.tsv\n");
-    return 0;
+    return FALSE;
   }
 
   char line[2 * ENTRY_SIZE];
@@ -602,13 +615,13 @@ int parse_templates(Templates *templates) {
     Template *templatePtr = create_template(templates, id);
 
     if (templatePtr == NULL)
-      return 0;
+      return FALSE;
 
     FILE *templateFile = get_file(TEMPLATE_DIR, id, ".html", "r");
 
     if (templateFile == NULL) {
       printf("File Not Found: %s.html\n", id);
-      return 0;
+      return FALSE;
     }
 
     fseek(templateFile, 0, SEEK_END);
@@ -619,33 +632,33 @@ int parse_templates(Templates *templates) {
       fread(templatePtr->body, 1, templatePtr->body_len, templateFile);
     } else {
       printf("Not enough memory");
-      return 0;
+      return FALSE;
     }
 
     fclose(templateFile);
   }
 
   fclose(templateModel);
-  return 1;
+  return TRUE;
 }
 
 int parse(Entries *entries, Templates *templates) {
   if (!parse_templates(templates)) {
     printf("Error Parsing Templates\n");
-    return 0;
+    return FALSE;
   }
 
   if (!parse_entries(entries, templates)) {
     printf("Error Parsing Entries\n");
-    return 0;
+    return FALSE;
   }
 
   if (!parse_content(entries)) {
     printf("Error Parsing Markdown\n");
-    return 0;
+    return FALSE;
   }
 
-  return 1;
+  return TRUE;
 }
 
 static void
@@ -738,21 +751,21 @@ output_html_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
     fprintf(output, "%s", curLine);
     size_t size = end_ptr - start_ptr - 1;
 
-    if (strncmp("title", start_ptr + 1, size) == 0) {
+    if (STRNCMP("title", start_ptr + 1, size)) {
       fprintf(output, "%s", entry->name);
-    } else if (strncmp("id", start_ptr + 1, size) == 0) {
+    } else if (STRNCMP("id", start_ptr + 1, size)) {
       fprintf(output, "%s", entry->id);
-    } else if ((strncmp("template", start_ptr + 1, size) == 0)) {
+    } else if ((STRNCMP("template", start_ptr + 1, size))) {
       fprintf(output, "%s", entry->template->id);
-    } else if (strncmp("nav", start_ptr + 1, size) == 0) {
+    } else if (STRNCMP("nav", start_ptr + 1, size)) {
       html_nav(output, entry, &entries->values[0], 1, 0);
-    } else if (strncmp("nav|hide", start_ptr + 1, size) == 0) {
+    } else if (STRNCMP("nav|hide", start_ptr + 1, size)) {
       html_nav(output, entry, &entries->values[0], 0, 0);
-    } else if (strncmp("...", start_ptr + 1, size) == 0) {
+    } else if (STRNCMP("...", start_ptr + 1, size)) {
       html_breadcrumbs(output, entry);
-    } else if (strncmp("inc", start_ptr + 1, size) == 0) {
+    } else if (STRNCMP("inc", start_ptr + 1, size)) {
       html_inc_links(output, entry);
-    } else if (strncmp("content", start_ptr + 1, size) == 0) {
+    } else if (STRNCMP("content", start_ptr + 1, size)) {
       fputs(entry->content, output);
     }
 
@@ -784,7 +797,7 @@ int output_file(Entry *entry, Entries *entries) {
     FILE *output = get_file(OUTPUT_DIR, entry->id, ".html", "w+");
     if (output == NULL) {
       printf("File Not Found: %s.html\n", entry->id);
-      return 0;
+      return FALSE;
     }
 
     output_html(output, entry->header->body, entry, entries);
@@ -794,7 +807,7 @@ int output_file(Entry *entry, Entries *entries) {
     fclose(output);
   }
 
-  return 1;
+  return TRUE;
 }
 
 int generate(Entries *entries, Templates *templates) {
@@ -802,11 +815,11 @@ int generate(Entries *entries, Templates *templates) {
 
   for (i = 0; i < entries->length; i++) {
     if (!output_file(&entries->values[i], entries)) {
-      return 0;
+      return FALSE;
     }
   }
 
-  return 1;
+  return TRUE;
 }
 
 static Entries entries;
