@@ -23,15 +23,18 @@ The intent of this site is to become a depot for my journals, research, and proj
 
 - [x] Basic Model
   - [x] TSV for Entry
+  - [ ] Rootless entries (i.e.: lists, supporting documents, images, etc...)
 - [x] File reading
   - [x] Print to screen.
 - [x] Parse MD
   - Block elements
     - [x] Headers
-    - [x] UL Lists
-      - [x] Nested lists
-    - [ ] OL Lists
-      - [ ] Mixed Lists
+    - [x] Lists
+      - [x] UL Lists
+        - [x] Nested lists
+      - [x] OL Lists
+      - [x] nested paragraphs
+      - [x] valid HTML
     - [x] Paragraphs
     - [x] line breaks
     - [ ] ID (NTH)
@@ -47,9 +50,11 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [ ] Links for images
       - [ ] Gallery view / image viewer
     - [ ] Text formatting
-      - [ ] **Strong**
-      - [ ] ~~Strikethrough~~
-      - [ ] *EM*
+      - [ ] **strong**
+      - [ ] ~~del~~
+      - [ ] *em*
+      - [ ] `mark`
+    - [ ] HTML formatting / `<code>` tags
 - [x] Move MD to parse stage in order to capture Incoming links?
 - [x] Parse HTML Template.
 - [x] Create HTML Output.
