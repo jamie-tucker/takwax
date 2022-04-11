@@ -18,6 +18,9 @@
 #define OL "ol"
 #define UL "ul"
 
+#define TRUE 1;
+#define FALSE 0;
+
 #define COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
 #pragma region Model
@@ -161,7 +164,7 @@ delete_file(char *dir, char *filename, char *ext) {
 
 #pragma region Markdown
 
-static void md_line(FILE *output, char *curLine, Entry *entry, Entries *entries);
+static void md_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entries *entries);
 
 static int
 md_img(FILE *file, char *curLine) {
@@ -169,16 +172,16 @@ md_img(FILE *file, char *curLine) {
   if (strncmp(start_ptr, "![", 2) == 0) {
     char *end_ptr = strchr(start_ptr + 1, ']');
   } else {
-    return 0;
+    return FALSE;
   }
 
   // fprintf(file, "<a href=\"%s\">%s</a>", linkURL, lineName);
 
-  return 1;
+  return TRUE;
 }
 
 static int
-md_link(FILE *file, char *curLine, Entry *entry, Entries *entries) {
+md_link(FILE *file, char *curLine, int lineLength, Entry *entry, Entries *entries) {
   char linkName[1024] = {'\0'};
   char linkURL[1024] = {'\0'};
   int externalLink = 0;
@@ -244,14 +247,34 @@ md_link(FILE *file, char *curLine, Entry *entry, Entries *entries) {
     fprintf(file, "<a href=\"%s\">%s</a>", linkURL, linkName);
 
   if (link_end_ptr)
-    md_line(file, link_end_ptr + 1, entry, entries);
+    md_line(file, link_end_ptr + 1, lineLength - (link_end_ptr - curLine), entry, entries);
 
   return 1;
 }
 
 static void
-md_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
-  if (md_link(output, curLine, entry, entries)) {
+code_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entries *entries) {
+  int i;
+  for (i = 0; i < lineLength; i++) {
+    char curChar = *(curLine + i);
+
+    switch (curChar) {
+      case '<':
+        fprintf(output, "%s", "<span class=\"tag\">&lt;</span><span class=\"element\">");
+        break;
+      case '>':
+        fprintf(output, "%s", "</span><span class=\"tag\">&gt;</span>");
+        break;
+      default:
+        fputc(curChar, output);
+        break;
+    }
+  }
+}
+
+static void
+md_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entries *entries) {
+  if (md_link(output, curLine, lineLength, entry, entries)) {
     // char *start_ptr = strchr(curLine, '{');
     // if (start_ptr) {
     //   char *end_ptr = strchr(start_ptr + 1, '}');
@@ -350,6 +373,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
   memset(listLevel, 0, sizeof(Queue));
   listLevel->count = 0;
   int codeOpen = 0, listOpen = 0;
+  void (*output_line)(FILE * output, char *curLine, int lineLength, Entry *entry, Entries *entries);
 
   while (curLine) {
     char *nextLine = strchr(curLine, '\n');
@@ -357,9 +381,10 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 
     char openTag[100] = {'\0'};
     char closeTag[100] = {'\0'};
-    int lineLength = curLine - nextLine;
+    int lineLength = nextLine - curLine;
     int indent = 0;
     char *startLine = curLine;
+    output_line = md_line;
 
     while (isblank(*curLine)) {
       if (*curLine == '\t')
@@ -370,23 +395,17 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     }
 
     int header, listType;
-    if ((header = is_header(curLine)) > 0 && indent <= TAB_SIZE * 2) {
-      listLevel = reset_list(output, listLevel, listOpen);
-      listOpen = 0;
-      sprintf(openTag, "<h%i>", header);
-      sprintf(closeTag, "</h%i>", header);
-      curLine += header + 1;
-    } else if (strncmp(curLine, "```", 3) == 0) {
+    if (strncmp(curLine, "```", 3) == 0) {
       curLine += 3;
       while (isblank(*curLine)) {
         curLine++;
       }
 
       if (codeOpen) {
-        strcpy(openTag, "</code>");
+        strcpy(openTag, "</code>\n</pre>");
         codeOpen = 0;
       } else {
-        sprintf(openTag, "<code class=\"%s\">", curLine);
+        sprintf(openTag, "<pre>\n<code class=\"%s\">", curLine);
         codeOpen = 1;
       }
 
@@ -394,8 +413,15 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
         curLine++;
     } else if (codeOpen) {
       // TODO: parse code lines
+      output_line = code_line;
     } else if (is_html(curLine)) {
       // TODO: do nothing
+    } else if ((header = is_header(curLine)) > 0 && indent <= TAB_SIZE * 2) {
+      listLevel = reset_list(output, listLevel, listOpen);
+      listOpen = 0;
+      sprintf(openTag, "<h%i>", header);
+      sprintf(closeTag, "</h%i>", header);
+      curLine += header + 1;
     } else if ((listType = is_list(curLine))) {
       if (listLevel->count == 0 || indent - prevIndent == TAB_SIZE) {
         strcpy(&openTag[0], "<");
@@ -473,7 +499,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
       fputc(' ', output);
     }
     fprintf(output, "%s", openTag);
-    md_line(output, curLine, entry, entries);
+    output_line(output, curLine, lineLength - indent, entry, entries);
     fprintf(output, "%s", closeTag);
 
     if (nextLine) *nextLine = '\n';  // then restore newline-char, just to be tidy
