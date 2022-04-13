@@ -197,8 +197,9 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
   char linkURL[1024] = {'\0'};
   int externalLink = 0;
 
-  char *start_ptr = strchr(curLine, '['), *link_end_ptr;
-  if (start_ptr) {
+  char *start_ptr = curLine;  // strchr(curLine, '['),
+  char *link_end_ptr;
+  if (*start_ptr == '[') {
     char *end_ptr = strchr(start_ptr + 1, ']');
     char *link_ptr;
 
@@ -234,11 +235,11 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
       *link_end_ptr = ')';
       externalLink = 1;
     } else {
-      return NULL;
+      return start_ptr;
     }
 
     *start_ptr = '\0';
-    fprintf(output, "%s", curLine);
+    // fprintf(output, "%s", curLine);
     size_t nameSize = end_ptr - start_ptr - 1;
 
     if (nameSize > 0) {
@@ -249,7 +250,7 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
 
     *start_ptr = '[';
   } else {
-    return NULL;
+    return start_ptr;
   }
 
   if (externalLink)
@@ -260,7 +261,7 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
   if (link_end_ptr)
     return link_end_ptr;
 
-  return NULL;
+  return start_ptr;
 }
 
 static void
@@ -285,12 +286,14 @@ output_code_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entr
 
 static void
 output_markdown_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entries *entries) {
-  printf("%i\n", lineLength);
-  char *nextLinePtr;
-  if ((nextLinePtr = output_markdown_link(output, curLine, entry, entries)) != NULL) {
+  char *nextLinePtr = curLine;
+  if (*nextLinePtr == '\0') {
+    return;
+  } else if ((nextLinePtr = output_markdown_link(output, curLine, entry, entries)) != curLine) {
     output_markdown_line(output, nextLinePtr + 1, lineLength - (nextLinePtr - curLine), entry, entries);
   } else {
-    fprintf(output, "%s", curLine);
+    fputc(*nextLinePtr, output);
+    output_markdown_line(output, nextLinePtr + 1, lineLength - 1, entry, entries);
   }
 }
 
