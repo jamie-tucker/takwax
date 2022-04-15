@@ -47,9 +47,10 @@ The intent of this site is to become a depot for my journals, research, and proj
     - [ ] Images
       - [ ] New Model for Images/Media
       - [ ] Support captions
-      - [ ] Links for images
+      - [ ] Links can handle images [![image description](file.png)](link.htm)
       - [ ] Gallery view / image viewer
     - [ ] Text formatting
+      - [x] escaped characters '\'
       - [ ] **strong**
       - [ ] ~~del~~
       - [ ] *em*

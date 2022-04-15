@@ -192,6 +192,22 @@ md_img(FILE *file, char *curLine) {
 }
 
 static char *
+is_html(char *curLine) {
+  if (STRNCMP(curLine, "<", 1)) {
+    char *ptr = curLine;
+    while (*ptr != '\n') {
+      if (STRNCMP(ptr, ">", 1)) {
+        return ptr + 1;
+      }
+
+      ptr++;
+    }
+  }
+
+  return curLine;
+}
+
+static char *
 output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries) {
   char linkName[1024] = {'\0'};
   char linkURL[1024] = {'\0'};
@@ -259,23 +275,29 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
     fprintf(output, "<a href=\"%s\">%s</a>", linkURL, linkName);
 
   if (link_end_ptr)
-    return link_end_ptr;
+    return link_end_ptr + 1;
 
   return start_ptr;
 }
 
 static void
-output_code_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entries *entries) {
+output_code_line(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
   int i;
   for (i = 0; i < lineLength; i++) {
     char curChar = *(curLine + i);
 
     switch (curChar) {
       case '<':
-        fprintf(output, "%s", "<span class=\"tag\">&lt;</span><span class=\"element\">");
+        if (isEscaped)
+          fprintf(output, "%s", "&lt;");
+        else
+          fprintf(output, "%s", "<span class=\"tag\">&lt;</span><span class=\"element\">");
         break;
       case '>':
-        fprintf(output, "%s", "</span><span class=\"tag\">&gt;</span>");
+        if (isEscaped)
+          fprintf(output, "%s", "&gt;");
+        else
+          fprintf(output, "%s", "</span><span class=\"tag\">&gt;</span>");
         break;
       default:
         fputc(curChar, output);
@@ -285,16 +307,24 @@ output_code_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entr
 }
 
 static void
-output_markdown_line(FILE *output, char *curLine, int lineLength, Entry *entry, Entries *entries) {
-  char *nextLinePtr = curLine;
-  if (*nextLinePtr == '\0') {
+output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscape, Entry *entry, Entries *entries) {
+  char *nextLinePtr;
+
+  if (*curLine == '\0') {
     return;
-  } else if ((nextLinePtr = output_markdown_link(output, curLine, entry, entries)) != curLine) {
-    output_markdown_line(output, nextLinePtr + 1, lineLength - (nextLinePtr - curLine), entry, entries);
+  } else if (*curLine == '\\') {
+    isEscape = TRUE;
+    nextLinePtr = curLine + 1;
+  } else if (isEscape && (nextLinePtr = is_html(curLine)) != curLine) {
+    output_code_line(output, curLine, nextLinePtr - curLine, isEscape, entry, entries);
+  } else if (!isEscape && (nextLinePtr = output_markdown_link(output, curLine, entry, entries)) != curLine) {
   } else {
-    fputc(*nextLinePtr, output);
-    output_markdown_line(output, nextLinePtr + 1, lineLength - 1, entry, entries);
+    fputc(*curLine, output);
+    isEscape = FALSE;
+    nextLinePtr = curLine + 1;
   }
+
+  output_markdown_line(output, nextLinePtr, lineLength - (nextLinePtr - curLine), isEscape, entry, entries);
 }
 
 static Queue *
@@ -310,22 +340,6 @@ reset_list(FILE *output, Queue *listLevel, int listOpen) {
   }
 
   return listLevel;
-}
-
-static int
-is_html(char *curLine) {
-  if (STRNCMP(curLine, "<", 1)) {
-    char *ptr = curLine;
-    while (*ptr != '\n') {
-      if (STRNCMP(ptr, ">", 1)) {
-        return TRUE;
-      }
-
-      ptr++;
-    }
-  }
-
-  return FALSE;
 }
 
 static int
@@ -370,7 +384,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
   memset(listLevel, 0, sizeof(Queue));
   listLevel->count = 0;
   int codeOpen = 0, listOpen = 0;
-  void (*output_line)(FILE * output, char *curLine, int lineLength, Entry *entry, Entries *entries);
+  void (*output_line)(FILE * output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries);
 
   while (curLine) {
     char *nextLine = strchr(curLine, '\n');
@@ -381,6 +395,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     int indent = 0;
     char *startLine = curLine;
     output_line = output_markdown_line;
+    int isEscaped = FALSE;
 
     while (isblank(*curLine)) {
       if (*curLine == '\t')
@@ -391,7 +406,12 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     }
 
     int header, listType;
-    if (STRNCMP(curLine, "```", 3)) {
+    if (STRNCMP(curLine, "\\", 1)) {
+      isEscaped = TRUE;
+      strcpy(openTag, "<p>");
+      strcpy(closeTag, "</p>");
+      curLine++;
+    } else if (STRNCMP(curLine, "```", 3)) {
       curLine += 3;
       while (isblank(*curLine)) {
         curLine++;
@@ -410,7 +430,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
       }
     } else if (codeOpen) {
       output_line = output_code_line;
-    } else if (is_html(curLine)) {
+    } else if (is_html(curLine) != curLine) {
       // TODO: do nothing
     } else if ((header = is_header(curLine)) > 0 && indent <= TAB_SIZE * 2) {
       listLevel = reset_list(output, listLevel, listOpen);
@@ -498,9 +518,11 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     fprintf(output, "%s", openTag);
 
     int lineLength = nextLine ? nextLine - curLine : 0;
-    output_line(output, curLine, lineLength, entry, entries);
+    output_line(output, curLine, lineLength, isEscaped, entry, entries);
 
     fprintf(output, "%s", closeTag);
+
+    isEscaped = FALSE;
 
     if (nextLine) *nextLine = '\n';  // then restore newline-char, just to be tidy
     curLine = nextLine ? (nextLine + 1) : NULL;
