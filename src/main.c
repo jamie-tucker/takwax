@@ -18,8 +18,8 @@
 #define OL "ol"
 #define UL "ul"
 
-#define TRUE 1;
-#define FALSE 0;
+#define TRUE 1
+#define FALSE 0
 
 #define _S3(s1, R, s2) (strcmp((s1), (s2)) R 0)
 #define _S2(s1, s2) (strcmp((s1), (s2)) == 0)
@@ -193,14 +193,39 @@ md_img(FILE *file, char *curLine) {
 
 static char *
 is_html(char *curLine) {
-  if (STRNCMP(curLine, "<", 1)) {
-    char *ptr = curLine;
-    while (*ptr != '\n') {
-      if (STRNCMP(ptr, ">", 1)) {
-        return ptr + 1;
-      }
+  char *ptr = curLine;
+  if (STRNCMP(ptr, "<", 1)) {
+    ptr++;
+    char *end_ptr = strchr(ptr, '>');
+    if (end_ptr) {
+      int length = end_ptr - ptr;
 
-      ptr++;
+      if (STRNCMP(ptr, "table", length) ||
+          STRNCMP(ptr, "table class", 11) ||
+          STRNCMP(ptr, "table id", 8) ||
+          STRNCMP(ptr, "/table", length) ||
+
+          STRNCMP(ptr, "tr", length) ||
+          STRNCMP(ptr, "tr class", 8) ||
+          STRNCMP(ptr, "tr id", 5) ||
+          STRNCMP(ptr, "/tr", length) ||
+
+          STRNCMP(ptr, "td", length) ||
+          STRNCMP(ptr, "td class", 8) ||
+          STRNCMP(ptr, "td id", 5) ||
+          STRNCMP(ptr, "/td", length) ||
+
+          STRNCMP(ptr, "div", length) ||
+          STRNCMP(ptr, "div class", 9) ||
+          STRNCMP(ptr, "div id", 6) ||
+          STRNCMP(ptr, "/div", length) ||
+
+          STRNCMP(ptr, "span", length) ||
+          STRNCMP(ptr, "span class", 10) ||
+          STRNCMP(ptr, "span id", 7) ||
+          STRNCMP(ptr, "/span", length)) {
+        return end_ptr + 1;
+      }
     }
   }
 
@@ -211,7 +236,7 @@ static char *
 output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries) {
   char linkName[1024] = {'\0'};
   char linkURL[1024] = {'\0'};
-  int externalLink = 0;
+  int externalLink = FALSE;
 
   char *start_ptr = curLine;  // strchr(curLine, '['),
   char *link_end_ptr;
@@ -249,7 +274,7 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
       *link_end_ptr = '\0';
       sprintf(linkURL, "%s", link_ptr);
       *link_end_ptr = ')';
-      externalLink = 1;
+      externalLink = TRUE;
     } else {
       return start_ptr;
     }
@@ -281,7 +306,7 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
 }
 
 static void
-output_code_line(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
+output_stripped(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
   int i;
   for (i = 0; i < lineLength; i++) {
     char curChar = *(curLine + i);
@@ -310,21 +335,29 @@ static void
 output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
   char *nextLinePtr;
 
-  if (*curLine == '\0') {
-    return;
-  } else if (*curLine == '\\') {
-    isEscaped = TRUE;
-    nextLinePtr = curLine + 1;
-  } else if (isEscaped && (nextLinePtr = is_html(curLine)) != curLine) {
-    output_code_line(output, curLine, nextLinePtr - curLine, isEscaped, entry, entries);
-  } else if (!isEscaped && (nextLinePtr = output_markdown_link(output, curLine, entry, entries)) != curLine) {
-  } else {
-    fputc(*curLine, output);
-    isEscaped = FALSE;
-    nextLinePtr = curLine + 1;
-  }
+  int i;
+  for (i = 0; i < lineLength;) {
+    char *curLinePtr = curLine + i;
 
-  output_markdown_line(output, nextLinePtr, lineLength - (nextLinePtr - curLine), isEscaped, entry, entries);
+    if (*curLinePtr == '\0') {
+      break;
+    } else if (!isEscaped && *curLinePtr == '\\') {
+      isEscaped = TRUE;
+      nextLinePtr = curLinePtr + 1;
+    } else if (!isEscaped && (nextLinePtr = is_html(curLinePtr)) != curLinePtr) {
+      char end = *nextLinePtr;
+      *nextLinePtr = '\0';
+      fprintf(output, "%s", curLinePtr);
+      *nextLinePtr = end;
+    } else if (!isEscaped && (nextLinePtr = output_markdown_link(output, curLinePtr, entry, entries)) != curLinePtr) {
+    } else {
+      output_stripped(output, curLinePtr, 1, TRUE, entry, entries);
+      isEscaped = FALSE;
+      nextLinePtr = curLinePtr + 1;
+    }
+
+    i = (nextLinePtr - curLine);
+  }
 }
 
 static Queue *
@@ -429,7 +462,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
         curLine++;
       }
     } else if (codeOpen) {
-      output_line = output_code_line;
+      output_line = output_stripped;
     } else if (is_html(curLine) != curLine) {
       // TODO: do nothing
     } else if ((header = is_header(curLine)) > 0 && indent <= TAB_SIZE * 2) {
