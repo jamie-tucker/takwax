@@ -307,24 +307,24 @@ output_code_line(FILE *output, char *curLine, int lineLength, int isEscaped, Ent
 }
 
 static void
-output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscape, Entry *entry, Entries *entries) {
+output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
   char *nextLinePtr;
 
   if (*curLine == '\0') {
     return;
   } else if (*curLine == '\\') {
-    isEscape = TRUE;
+    isEscaped = TRUE;
     nextLinePtr = curLine + 1;
-  } else if (isEscape && (nextLinePtr = is_html(curLine)) != curLine) {
-    output_code_line(output, curLine, nextLinePtr - curLine, isEscape, entry, entries);
-  } else if (!isEscape && (nextLinePtr = output_markdown_link(output, curLine, entry, entries)) != curLine) {
+  } else if (isEscaped && (nextLinePtr = is_html(curLine)) != curLine) {
+    output_code_line(output, curLine, nextLinePtr - curLine, isEscaped, entry, entries);
+  } else if (!isEscaped && (nextLinePtr = output_markdown_link(output, curLine, entry, entries)) != curLine) {
   } else {
     fputc(*curLine, output);
-    isEscape = FALSE;
+    isEscaped = FALSE;
     nextLinePtr = curLine + 1;
   }
 
-  output_markdown_line(output, nextLinePtr, lineLength - (nextLinePtr - curLine), isEscape, entry, entries);
+  output_markdown_line(output, nextLinePtr, lineLength - (nextLinePtr - curLine), isEscaped, entry, entries);
 }
 
 static Queue *
