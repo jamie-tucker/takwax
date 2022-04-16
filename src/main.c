@@ -677,6 +677,14 @@ int parse_content(Entries *entries) {
     fseek(contentFile, 0, SEEK_END);
     contentBufferLength = ftell(contentFile);
     fseek(contentFile, 0, SEEK_SET);
+
+    printf("File size: %ld bytes\n", contentBufferLength);
+
+    if (contentBufferLength > (1024 * 1024)) {
+      printf("Not Enough Memory - Content file: %s.md is too large\n", entryPtr->id);
+      return FALSE;
+    }
+
     fread(contentBuffer, contentBufferLength + 1, 1, contentFile);
     fclose(contentFile);
 
