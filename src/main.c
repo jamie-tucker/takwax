@@ -554,7 +554,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     } else if (codeOpen) {
       output_line = output_stripped;
     } else if (is_html(curLine) > 0) {
-      // TODO: do nothing
+      // do nothing
     } else if (STRNCMP(curLine, "***", MAX(nextLine ? nextLine - curLine : 0, 3))) {
       strcpy(closeTag, "<hr />");
       curLine += 3;
@@ -673,6 +673,7 @@ int parse_content(Entries *entries) {
       continue;
     }
 
+    memset(contentBuffer, 0, contentBufferLength);
     fseek(contentFile, 0, SEEK_END);
     contentBufferLength = ftell(contentFile);
     fseek(contentFile, 0, SEEK_SET);
