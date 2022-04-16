@@ -18,6 +18,11 @@
 #define OL "ol"
 #define UL "ul"
 
+#define EM "em"
+#define STRONG "strong"
+#define DEL "del"
+#define MARK "mark"
+
 #define TRUE 1
 #define FALSE 0
 
@@ -33,6 +38,16 @@
 #define STRNCMP(...)              \
   GET_SN(__VA_ARGS__, _SN4, _SN3) \
   (__VA_ARGS__)
+
+#define MAX(a, b) \
+  ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+
+#define MIN(a, b) \
+  ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
 
 #define COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -128,18 +143,55 @@ typedef enum list_type {
   ol = 3
 } list_type;
 
+typedef enum inline_style_type {
+  em = 1,
+  strong = 2,
+  del = 3,
+  mark = 4
+} inline_style_type;
+
 typedef struct Queue {
   int count;
   int list[32];
 } Queue;
 
+static Queue *
+create_queue() {
+  Queue *queue = (Queue *)malloc(sizeof(Queue));
+  memset(queue, 0, sizeof(Queue));
+  queue->count = 0;
+  return queue;
+}
+
 static void
-queue_push(Queue *queue, int listType) {
-  queue->list[queue->count++] = listType;
+queue_push(Queue *queue, int type) {
+  queue->list[queue->count++] = type;
+}
+
+static int
+queue_peek(Queue *queue) {
+  return queue->list[(queue->count) - 1];
 }
 
 static char *
-queue_pop(Queue *queue) {
+inline_style_queue_pop(Queue *queue) {
+  int type = queue->list[--(queue->count)];
+  switch (type) {
+    case (int)em:
+      return EM;
+    case (int)strong:
+      return STRONG;
+    case (int)del:
+      return DEL;
+    case (int)mark:
+      return MARK;
+    default:
+      return NULL;
+  }
+}
+
+static char *
+list_queue_pop(Queue *queue) {
   int type = queue->list[--(queue->count)];
   switch (type) {
     case (int)ol:
@@ -191,48 +243,55 @@ md_img(FILE *file, char *curLine) {
   return TRUE;
 }
 
-static char *
+static int
 is_html(char *curLine) {
   char *ptr = curLine;
   if (STRNCMP(ptr, "<", 1)) {
     ptr++;
     char *end_ptr = strchr(ptr, '>');
     if (end_ptr) {
-      int length = end_ptr - ptr;
+      int length = end_ptr - curLine;
 
-      if (STRNCMP(ptr, "table", length) ||
+      if (STRNCMP(ptr, "table>", length) ||
+          STRNCMP(ptr, "table style", 11) ||
           STRNCMP(ptr, "table class", 11) ||
           STRNCMP(ptr, "table id", 8) ||
-          STRNCMP(ptr, "/table", length) ||
+          STRNCMP(ptr, "/table>", length) ||
 
-          STRNCMP(ptr, "tr", length) ||
+          STRNCMP(ptr, "tr>", length) ||
           STRNCMP(ptr, "tr class", 8) ||
+          STRNCMP(ptr, "tr style", 8) ||
           STRNCMP(ptr, "tr id", 5) ||
-          STRNCMP(ptr, "/tr", length) ||
+          STRNCMP(ptr, "/tr>", length) ||
 
-          STRNCMP(ptr, "td", length) ||
+          STRNCMP(ptr, "td>", length) ||
           STRNCMP(ptr, "td class", 8) ||
+          STRNCMP(ptr, "td style", 8) ||
           STRNCMP(ptr, "td id", 5) ||
-          STRNCMP(ptr, "/td", length) ||
+          STRNCMP(ptr, "/td>", length) ||
 
-          STRNCMP(ptr, "div", length) ||
+          STRNCMP(ptr, "div>", length) ||
           STRNCMP(ptr, "div class", 9) ||
+          STRNCMP(ptr, "div style", 9) ||
           STRNCMP(ptr, "div id", 6) ||
-          STRNCMP(ptr, "/div", length) ||
+          STRNCMP(ptr, "/div>", length) ||
 
-          STRNCMP(ptr, "span", length) ||
+          STRNCMP(ptr, "span>", length) ||
           STRNCMP(ptr, "span class", 10) ||
+          STRNCMP(ptr, "span style", 10) ||
           STRNCMP(ptr, "span id", 7) ||
-          STRNCMP(ptr, "/span", length)) {
-        return end_ptr + 1;
+          STRNCMP(ptr, "/span>", length) ||
+
+          STRNCMP(ptr, "br />", length)) {
+        return length + 1;
       }
     }
   }
 
-  return curLine;
+  return FALSE;
 }
 
-static char *
+static int
 output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries) {
   char linkName[1024] = {'\0'};
   char linkURL[1024] = {'\0'};
@@ -276,7 +335,7 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
       *link_end_ptr = ')';
       externalLink = TRUE;
     } else {
-      return start_ptr;
+      return FALSE;
     }
 
     *start_ptr = '\0';
@@ -291,7 +350,7 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
 
     *start_ptr = '[';
   } else {
-    return start_ptr;
+    return FALSE;
   }
 
   if (externalLink)
@@ -300,9 +359,9 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
     fprintf(output, "<a href=\"%s\">%s</a>", linkURL, linkName);
 
   if (link_end_ptr)
-    return link_end_ptr + 1;
+    return (link_end_ptr - start_ptr) + 1;
 
-  return start_ptr;
+  return FALSE;
 }
 
 static void
@@ -331,11 +390,38 @@ output_stripped(FILE *output, char *curLine, int lineLength, int isEscaped, Entr
   }
 }
 
+static int
+is_inline_style(FILE *output, char *curLine, Queue *queue, char *md, char *html, int tag) {
+  char *ptr = curLine;
+  int length = strlen(md);
+  if (STRNCMP(ptr, md, length)) {
+    char *end_ptr = ptr + length;
+
+    if (queue_peek(queue) == tag) {
+      if (STRNCMP((curLine - length), md, length))
+        return FALSE;
+      else
+        fprintf(output, "</%s>", inline_style_queue_pop(queue));
+      return length;
+    }
+
+    while (*(end_ptr) != '\0' && *(end_ptr + 1) != '\0') {
+      if (STRNCMP(end_ptr + 2, md, length)) {
+        fprintf(output, "<%s>", html);
+        queue_push(queue, tag);
+        return length;
+      }
+      end_ptr++;
+    }
+  }
+  return FALSE;
+}
+
 static void
 output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
-  char *nextLinePtr;
+  int i, length;
+  Queue *inlineStyleQueue = create_queue();
 
-  int i;
   for (i = 0; i < lineLength;) {
     char *curLinePtr = curLine + i;
 
@@ -343,21 +429,28 @@ output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped,
       break;
     } else if (!isEscaped && *curLinePtr == '\\') {
       isEscaped = TRUE;
-      nextLinePtr = curLinePtr + 1;
-    } else if (!isEscaped && (nextLinePtr = is_html(curLinePtr)) != curLinePtr) {
-      char end = *nextLinePtr;
-      *nextLinePtr = '\0';
-      fprintf(output, "%s", curLinePtr);
-      *nextLinePtr = end;
-    } else if (!isEscaped && (nextLinePtr = output_markdown_link(output, curLinePtr, entry, entries)) != curLinePtr) {
+      i++;
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "**", STRONG, strong))) {
+      i += length;
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "*", EM, em))) {
+      i += length;
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "~~", DEL, del))) {
+      i += length;
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "`", MARK, mark))) {
+      i += length;
+    } else if (!isEscaped && (length = is_html(curLinePtr))) {
+      fprintf(output, "%.*s", length, curLinePtr);
+      i += length;
+    } else if (!isEscaped && (length = output_markdown_link(output, curLinePtr, entry, entries))) {
+      i += length;
     } else {
       output_stripped(output, curLinePtr, 1, TRUE, entry, entries);
       isEscaped = FALSE;
-      nextLinePtr = curLinePtr + 1;
+      i++;
     }
-
-    i = (nextLinePtr - curLine);
   }
+
+  free(inlineStyleQueue);
 }
 
 static Queue *
@@ -366,7 +459,7 @@ reset_list(FILE *output, Queue *listLevel, int listOpen) {
     if (listOpen) {
       fputs("\n</li>", output);
     }
-    fprintf(output, "\n</%s>", queue_pop(listLevel));
+    fprintf(output, "\n</%s>", list_queue_pop(listLevel));
     if (!listOpen && listLevel->count > 0) {
       fputs("</li>", output);
     }
@@ -413,10 +506,8 @@ static void
 output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
   char *curLine = buffer;
   int prevIndent = 0;
-  Queue *listLevel = (Queue *)malloc(sizeof(Queue));
-  memset(listLevel, 0, sizeof(Queue));
-  listLevel->count = 0;
-  int codeOpen = 0, listOpen = 0;
+  Queue *listLevel = create_queue();
+  int codeOpen = FALSE, listOpen = FALSE;
   void (*output_line)(FILE * output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries);
 
   while (curLine) {
@@ -426,7 +517,6 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     char openTag[100] = {'\0'};
     char closeTag[100] = {'\0'};
     int indent = 0;
-    char *startLine = curLine;
     output_line = output_markdown_line;
     int isEscaped = FALSE;
 
@@ -452,10 +542,10 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 
       if (codeOpen) {
         strcpy(openTag, "</code>\n</pre>");
-        codeOpen = 0;
+        codeOpen = FALSE;
       } else {
         sprintf(openTag, "<pre>\n<code class=\"%s\">", curLine);
-        codeOpen = 1;
+        codeOpen = TRUE;
       }
 
       while (*curLine != '\0') {
@@ -463,11 +553,14 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
       }
     } else if (codeOpen) {
       output_line = output_stripped;
-    } else if (is_html(curLine) != curLine) {
+    } else if (is_html(curLine) > 0) {
       // TODO: do nothing
+    } else if (STRNCMP(curLine, "***", MAX(nextLine ? nextLine - curLine : 0, 3))) {
+      strcpy(closeTag, "<hr />");
+      curLine += 3;
     } else if ((header = is_header(curLine)) > 0 && indent <= TAB_SIZE * 2) {
       listLevel = reset_list(output, listLevel, listOpen);
-      listOpen = 0;
+      listOpen = FALSE;
       sprintf(openTag, "<h%i>", header);
       sprintf(closeTag, "</h%i>", header);
       curLine += header + 1;
@@ -483,7 +576,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
             break;
         }
         strcpy(&openTag[3], ">\n<li>");
-        listOpen = 1;
+        listOpen = TRUE;
         queue_push(listLevel, listType);
       } else if (indent < prevIndent) {
         int i, tagIndex;
@@ -491,13 +584,13 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
           if (i == 0) {
             strcpy(&openTag[0], "</li>\n");
             strcpy(&openTag[6], "</");
-            strcpy(&openTag[8], queue_pop(listLevel));
+            strcpy(&openTag[8], list_queue_pop(listLevel));
             strcpy(&openTag[10], ">");
             tagIndex = 11;
           } else {
             strcpy(&openTag[tagIndex], "\n</li>");
             strcpy(&openTag[tagIndex + 6], "\n</");
-            strcpy(&openTag[tagIndex + 9], queue_pop(listLevel));
+            strcpy(&openTag[tagIndex + 9], list_queue_pop(listLevel));
             strcpy(&openTag[tagIndex + 11], ">");
             tagIndex += 12;
           }
@@ -509,7 +602,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
         // else
         strcpy(&openTag[tagIndex], "\n</li>\n<li>");
 
-        listOpen = 1;
+        listOpen = TRUE;
       } else {
         if (listOpen) {
           strcpy(openTag, "</li>\n<li>");
@@ -517,28 +610,28 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
           strcpy(openTag, "<li>");
         }
 
-        listOpen = 1;
+        listOpen = TRUE;
       }
 
       curLine += listType;
     } else if (*curLine == '\0' && *(curLine + 1) == '\n') {
       listLevel = reset_list(output, listLevel, listOpen);
-      listOpen = 0;
+      listOpen = FALSE;
       strcpy(openTag, "<br />");
     } else if (*curLine != '\0') {
       if (indent > prevIndent && listLevel->count > 0) {
         indent = prevIndent;
         strcpy(closeTag, "</p></li>");
-        listOpen = 0;
+        listOpen = FALSE;
       } else {
         listLevel = reset_list(output, listLevel, listOpen);
-        listOpen = 0;
+        listOpen = FALSE;
         strcpy(closeTag, "</p>");
       }
       strcpy(openTag, "<p>");
     } else {
       listLevel = reset_list(output, listLevel, listOpen);
-      listOpen = 0;
+      listOpen = FALSE;
     }
 
     fputc('\n', output);
@@ -561,6 +654,8 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     curLine = nextLine ? (nextLine + 1) : NULL;
     prevIndent = indent;
   }
+
+  free(listLevel);
 }
 
 int parse_content(Entries *entries) {
@@ -739,7 +834,7 @@ html_nav(FILE *file, Entry *entry, Entry *root, int show_root, int level) {
     fputs("<ul>\n", file);
 
   for (i = 0; i < root->children_len; i++) {
-    if (show_root == 0 && root == root->children[i]) {
+    if (!show_root && root == root->children[i]) {
       // skip
     } else if (root->children[i]->content_len > 0) {
       fprintf(
@@ -800,9 +895,9 @@ output_html_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
     } else if ((STRNCMP("template", start_ptr + 1, size))) {
       fprintf(output, "%s", entry->template->id);
     } else if (STRNCMP("nav", start_ptr + 1, size)) {
-      html_nav(output, entry, &entries->values[0], 1, 0);
+      html_nav(output, entry, &entries->values[0], TRUE, 0);
     } else if (STRNCMP("nav|hide", start_ptr + 1, size)) {
-      html_nav(output, entry, &entries->values[0], 0, 0);
+      html_nav(output, entry, &entries->values[0], FALSE, 0);
     } else if (STRNCMP("...", start_ptr + 1, size)) {
       html_breadcrumbs(output, entry);
     } else if (STRNCMP("inc", start_ptr + 1, size)) {

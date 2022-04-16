@@ -37,8 +37,9 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [x] valid HTML
     - [x] Paragraphs
     - [x] line breaks
-    - [ ] ID (NTH)
-    - [ ] Class (NTH)
+    - [x] ~~ID (NTH)~~
+    - [x] ~~Class (NTH)~~
+    - [x] HR tag
   - Inline Elements
     - [x] Links
       - [x] Internal
@@ -51,11 +52,12 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [ ] Gallery view / image viewer
     - [ ] Text formatting
       - [x] escaped characters '\'
-      - [ ] **strong**
-      - [ ] ~~del~~
-      - [ ] *em*
-      - [ ] `mark`
-    - [ ] HTML formatting / `<code>` tags
+      - [x] **strong**
+      - [x] ~~del~~
+      - [x] *em*
+      - [x] `mark`
+    - [x] HTML formatting / `<code>` tags
+    - [ ] refactor markdown output checks to return int
 - [x] Move MD to parse stage in order to capture Incoming links?
 - [x] Parse HTML Template.
 - [x] Create HTML Output.
