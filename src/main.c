@@ -282,7 +282,19 @@ is_html(char *curLine) {
           STRNCMP(ptr, "span id", 7) ||
           STRNCMP(ptr, "/span>", length) ||
 
-          STRNCMP(ptr, "br />", length)) {
+          STRNCMP(ptr, "br />", length) ||
+
+          STRNCMP(ptr, "figure>", length) ||
+          STRNCMP(ptr, "figure class", 12) ||
+          STRNCMP(ptr, "figure style", 12) ||
+          STRNCMP(ptr, "figure id", 9) ||
+          STRNCMP(ptr, "/figure>", length) ||
+
+          STRNCMP(ptr, "figcaption>", length) ||
+          STRNCMP(ptr, "figcaption class", 16) ||
+          STRNCMP(ptr, "figcaption style", 16) ||
+          STRNCMP(ptr, "figcaption id", 13) ||
+          STRNCMP(ptr, "/figcaption>", length)) {
         return length + 1;
       }
     }

@@ -26,42 +26,54 @@ The intent of this site is to become a depot for my journals, research, and proj
   - [ ] Rootless entries (i.e.: lists, supporting documents, images, etc...)
 - [x] File reading
   - [x] Print to screen.
-- [x] Parse MD
+- Parse MD
   - Block elements
-    - [x] Headers
-    - [x] Lists
+    - Headers
+      - [x] H1-H6
+      - [ ] Heading Ids ### My Great Heading {#custom-id}
+    - Lists
       - [x] UL Lists
         - [x] Nested lists
       - [x] OL Lists
       - [x] nested paragraphs
       - [x] valid HTML
       - [x] Checkboxes
+    - Definition lists
+      - [ ] Definition list \<dl>
+      - [ ] Definition title \<dt>
+      - [ ] Definition \<dd>
     - [x] Paragraphs
     - [x] line breaks
     - [x] ~~ID (NTH)~~
     - [x] ~~Class (NTH)~~
     - [x] HR tag
-    - [x] Block quotes
+    - Block quotes
       - [x] \<blockquote>
       - [x] nested
       - [x] work with lists, p, header, inline
   - Inline Elements
-    - [x] Links
+    - Links
       - [x] Internal
       - [x] External
       - [x] Page anchors
-    - [ ] Images
+    - Images
       - [x] markdown images
       - [ ] New Model for Images/Media
       - [ ] Support captions
       - [x] Links can handle images [![image description](file.png)](link.htm)
       - [ ] Gallery view / image viewer
-    - [x] Text formatting
-      - [x] escaped characters '\'
+    - Text formatting
+      - [x] escaped characters '\\'
       - [x] **strong**
       - [x] ~~del~~
       - [x] *em*
       - [x] `code`
+      - [ ] ==mark==
+      - [ ] ~sub~
+      - [ ] ^sup^
+    - Footnotes
+      - [ ] \[^1] Inline part
+      - [ ] \[^1]: Block part
     - [x] HTML formatting / `<code>` tags
     - [x] refactor markdown output checks to return int
 - [x] Move MD to parse stage in order to capture Incoming links?
