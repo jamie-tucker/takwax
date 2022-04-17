@@ -35,7 +35,7 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [x] OL Lists
       - [x] nested paragraphs
       - [x] valid HTML
-      - [ ] Checkboxes
+      - [x] Checkboxes
     - [x] Paragraphs
     - [x] line breaks
     - [x] ~~ID (NTH)~~
@@ -63,7 +63,7 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [x] *em*
       - [x] `code`
     - [x] HTML formatting / `<code>` tags
-    - [ ] refactor markdown output checks to return int
+    - [x] refactor markdown output checks to return int
 - [x] Move MD to parse stage in order to capture Incoming links?
 - [x] Parse HTML Template.
 - [x] Create HTML Output.

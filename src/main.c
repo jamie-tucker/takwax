@@ -594,6 +594,8 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 
     int header, listType;
     if (STRNCMP(curLine, "\\", 1)) {
+      listLevel = reset_list(output, listLevel, listOpen);
+      listOpen = FALSE;
       isEscaped = TRUE;
       strcpy(openTag, "<p>");
       strcpy(closeTag, "</p>");
@@ -662,11 +664,10 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
           }
         }
 
-        // don't know if I still need this
-        // if (i == 0)
-        //   strcpy(&openTag[0], "<li>");
-        // else
-        strcpy(&openTag[tagIndex], "\n</li>\n<li>");
+        if (i == 0)
+          strcpy(&openTag[0], "<li>");
+        else
+          strcpy(&openTag[tagIndex], "\n</li>\n<li>");
 
         listOpen = TRUE;
       } else {
@@ -707,7 +708,18 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
       fputc(' ', output);
     }
 
-    fprintf(output, "%s", openTag);
+    int tagLength = strlen(openTag) - 4;
+    if (STRNCMP(openTag + tagLength, "<li>", 4) && STRNCMP(curLine, "[ ] ", 4)) {
+      fprintf(output, "%.*s", tagLength, openTag);
+      fprintf(output, "%s", "<li class=\"task-list-item\"><input type=\"checkbox\" class=\"task-list-item-checkbox\" disabled />");
+      curLine += 4;
+    } else if (STRNCMP(openTag + tagLength, "<li>", 4) && STRNCMP(curLine, "[x] ", 4)) {
+      fprintf(output, "%.*s", tagLength, openTag);
+      fprintf(output, "%s", "<li class=\"task-list-item\"><input type=\"checkbox\" class=\"task-list-item-checkbox\" disabled checked/>");
+      curLine += 4;
+    } else {
+      fprintf(output, "%s", openTag);
+    }
 
     int lineLength = nextLine ? nextLine - curLine : 0;
     output_line(output, curLine, lineLength, isEscaped, entry, entries);
