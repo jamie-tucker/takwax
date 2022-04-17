@@ -35,33 +35,39 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [x] OL Lists
       - [x] nested paragraphs
       - [x] valid HTML
+      - [ ] Checkboxes
     - [x] Paragraphs
     - [x] line breaks
     - [x] ~~ID (NTH)~~
     - [x] ~~Class (NTH)~~
     - [x] HR tag
+    - [x] Block quotes
+      - [x] \<blockquote>
+      - [x] nested
+      - [x] work with lists, p, header, inline
   - Inline Elements
     - [x] Links
       - [x] Internal
       - [x] External
       - [x] Page anchors
     - [ ] Images
+      - [x] markdown images
       - [ ] New Model for Images/Media
       - [ ] Support captions
-      - [ ] Links can handle images [![image description](file.png)](link.htm)
+      - [x] Links can handle images [![image description](file.png)](link.htm)
       - [ ] Gallery view / image viewer
-    - [ ] Text formatting
+    - [x] Text formatting
       - [x] escaped characters '\'
       - [x] **strong**
       - [x] ~~del~~
       - [x] *em*
-      - [x] `mark`
+      - [x] `code`
     - [x] HTML formatting / `<code>` tags
     - [ ] refactor markdown output checks to return int
 - [x] Move MD to parse stage in order to capture Incoming links?
 - [x] Parse HTML Template.
 - [x] Create HTML Output.
-- [ ] Add support for {blog} so that they can be output as <article> in a loop on a category page with links to pages with formatting.
+- [ ] Add support for {blog} so that they can be output as \<article> in a loop on a category page with links to pages with formatting.
 - [ ] Error handling
 
 ## LICENSE

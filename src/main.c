@@ -21,7 +21,7 @@
 #define EM "em"
 #define STRONG "strong"
 #define DEL "del"
-#define MARK "mark"
+#define MARK "code"
 
 #define TRUE 1
 #define FALSE 0
@@ -292,15 +292,57 @@ is_html(char *curLine) {
 }
 
 static int
+markdown_image(void *output, char *curLine, int isFile) {
+  char altText[1024] = {'\0'};
+  char srcText[1024] = {'\0'};
+  char *link = "<img src=\"%.*s\" alt=\"%.*s\" />";
+  char *ptr = curLine;
+  char *endPtr = curLine;
+
+  if (STRNCMP(ptr, "![", 2)) {
+    ptr += 2;
+    char *altEndPtr = strchr(ptr, ']');
+    if (STRNCMP(altEndPtr, "](", 2)) {
+      int altLength = altEndPtr - ptr;
+      altEndPtr += 2;
+      endPtr = strchr(altEndPtr, ')');
+
+      if (endPtr) {
+        int srcLength = endPtr - altEndPtr;
+
+        if (isFile) {
+          fprintf((FILE *)output, link, srcLength, altEndPtr, altLength, ptr);
+        } else {
+          sprintf((char *)output, link, srcLength, altEndPtr, altLength, ptr);
+        }
+
+        return endPtr - curLine + 1;
+      }
+    }
+  }
+  return FALSE;
+}
+
+static int output_markdown_image(FILE *output, char *curLine) {
+  return markdown_image(output, curLine, TRUE);
+}
+
+static int string_markdown_image(char *string, char *curLine) {
+  return markdown_image(string, curLine, FALSE);
+}
+
+static int
 output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries) {
   char linkName[1024] = {'\0'};
   char linkURL[1024] = {'\0'};
   int externalLink = FALSE;
+  int linkNameCount = 0;
 
   char *start_ptr = curLine;  // strchr(curLine, '['),
   char *link_end_ptr;
   if (*start_ptr == '[') {
-    char *end_ptr = strchr(start_ptr + 1, ']');
+    linkNameCount = string_markdown_image(&linkName[0], curLine + 1);
+    char *end_ptr = strchr(start_ptr + linkNameCount, ']');
     char *link_ptr;
 
     if (STRNCMP(end_ptr, "]({", 3)) {
@@ -323,32 +365,28 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
     } else if (STRNCMP(end_ptr, "](#", 3)) {
       link_ptr = end_ptr + 2;  // include the #
       link_end_ptr = strchr(link_ptr, ')');
-      *link_end_ptr = '\0';
-      sprintf(linkURL, "%s", link_ptr);
-      *link_end_ptr = ')';
+      int length = link_end_ptr - link_ptr;
+      sprintf(linkURL, "%.*s", length, link_ptr);
     } else if (STRNCMP(end_ptr, "](", 2)) {
       link_ptr = end_ptr + 2;
       link_end_ptr = strchr(link_ptr, ')');
+      int length = link_end_ptr - link_ptr;
+      sprintf(linkURL, "%.*s", length, link_ptr);
 
-      *link_end_ptr = '\0';
-      sprintf(linkURL, "%s", link_ptr);
-      *link_end_ptr = ')';
       externalLink = TRUE;
     } else {
       return FALSE;
     }
 
-    *start_ptr = '\0';
-    // fprintf(output, "%s", curLine);
     size_t nameSize = end_ptr - start_ptr - 1;
 
-    if (nameSize > 0) {
+    if (linkNameCount > 0) {
+      // Don't set linkName
+    } else if (nameSize > 0) {
       strncpy(linkName, start_ptr + 1, nameSize);
     } else {
       strcpy(linkName, linkURL);
     }
-
-    *start_ptr = '[';
   } else {
     return FALSE;
   }
@@ -441,6 +479,8 @@ output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped,
     } else if (!isEscaped && (length = is_html(curLinePtr))) {
       fprintf(output, "%.*s", length, curLinePtr);
       i += length;
+    } else if (!isEscaped && (length = output_markdown_image(output, curLinePtr))) {
+      i += length;
     } else if (!isEscaped && (length = output_markdown_link(output, curLinePtr, entry, entries))) {
       i += length;
     } else {
@@ -466,6 +506,26 @@ reset_list(FILE *output, Queue *listLevel, int listOpen) {
   }
 
   return listLevel;
+}
+
+static int
+set_blockquote(FILE *output, char *curLine, int blockquoteOpen) {
+  int i = 0;
+  while (STRNCMP(curLine, ">>>>", i + 1) && i <= 4) {
+    i++;
+  }
+
+  while (i > blockquoteOpen) {
+    fprintf(output, "\n%s", "<blockquote>");
+    blockquoteOpen++;
+  }
+
+  while (i < blockquoteOpen) {
+    fprintf(output, "\n%s", "</blockquote>");
+    blockquoteOpen--;
+  }
+
+  return blockquoteOpen;
 }
 
 static int
@@ -507,7 +567,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
   char *curLine = buffer;
   int prevIndent = 0;
   Queue *listLevel = create_queue();
-  int codeOpen = FALSE, listOpen = FALSE;
+  int codeOpen = FALSE, listOpen = FALSE, blockquoteOpen = FALSE;
   void (*output_line)(FILE * output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries);
 
   while (curLine) {
@@ -519,6 +579,10 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     int indent = 0;
     output_line = output_markdown_line;
     int isEscaped = FALSE;
+
+    if ((blockquoteOpen = set_blockquote(output, curLine, blockquoteOpen))) {
+      curLine += blockquoteOpen;
+    }
 
     while (isblank(*curLine)) {
       if (*curLine == '\t')
@@ -554,6 +618,8 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     } else if (codeOpen) {
       output_line = output_stripped;
     } else if (is_html(curLine) > 0) {
+      // do nothing
+    } else if (STRNCMP(curLine, "![", 2)) {
       // do nothing
     } else if (STRNCMP(curLine, "***", MAX(nextLine ? nextLine - curLine : 0, 3))) {
       strcpy(closeTag, "<hr />");
