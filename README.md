@@ -23,14 +23,14 @@ The intent of this site is to become a depot for my journals, research, and proj
 
 - [x] Basic Model
   - [x] TSV for Entry
-  - [ ] Rootless entries (i.e.: lists, supporting documents, images, etc...)
+  - [x] Rootless entries (i.e.: lists, supporting documents, images, etc...)
 - [x] File reading
   - [x] Print to screen.
 - Parse MD
   - Block elements
     - Headers
       - [x] H1-H6
-      - [ ] Heading Ids ### My Great Heading {#custom-id}
+      - [x] Heading Ids ### My Great Heading {#custom-id}
     - Lists
       - [x] UL Lists
         - [x] Nested lists
@@ -54,12 +54,13 @@ The intent of this site is to become a depot for my journals, research, and proj
   - Inline Elements
     - Links
       - [x] Internal
+      - [x] Internal with page anchors
       - [x] External
-      - [x] Page anchors
+      - [x] same-page anchors
     - Images
       - [x] markdown images
       - [ ] New Model for Images/Media
-      - [ ] Support captions
+      - [x] Support captions with \<figure> tags
       - [x] Links can handle images [![image description](file.png)](link.htm)
       - [ ] Gallery view / image viewer
     - Text formatting
@@ -68,19 +69,37 @@ The intent of this site is to become a depot for my journals, research, and proj
       - [x] ~~del~~
       - [x] *em*
       - [x] `code`
-      - [ ] ==mark==
-      - [ ] ~sub~
-      - [ ] ^sup^
+      - [x] ==mark==
+      - [x] ~sub~
+      - [x] ^sup^
     - Footnotes
       - [ ] \[^1] Inline part
       - [ ] \[^1]: Block part
     - [x] HTML formatting / `<code>` tags
     - [x] refactor markdown output checks to return int
+  - Strip characters
+    - [x] \& `&amp;`
+    - [x] \' `&apos;`
+    - [x] \" `&quot;`
+    - [x] \> `&gt;`
+    - [x] \< `&lt;`
 - [x] Move MD to parse stage in order to capture Incoming links?
 - [x] Parse HTML Template.
 - [x] Create HTML Output.
 - [ ] Add support for {blog} so that they can be output as \<article> in a loop on a category page with links to pages with formatting.
-- [ ] Error handling
+- RSS feed
+- Sitemap
+  - [ ] xml
+    - [ ] robots.txt
+  - [ ] human readable
+- Error handling
+  - [ ] Throw errors when parsing... Too many silent fails.
+  - [ ] Watch for sprintf, and buffer sizes.
+- [x] Get dates of files
+  - [x] Don't process files that don't need to be updated
+- Template tags
+  - [x] Add {modified_date}
+  - [x] Add {created_date}
 
 ## LICENSE
 

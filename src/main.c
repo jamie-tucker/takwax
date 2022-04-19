@@ -2,12 +2,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #define MODEL_DIR "src/model/"
 #define CONTENT_DIR "src/content/"
 #define TEMPLATE_DIR "src/template/"
 #define OUTPUT_DIR "output/site/"
-#define TEMP_DIR "output/temp/"
+#define TEMP_DIR "output/.temp/"
 
 #define ENTRY_SIZE 32
 #define ENTRY_COUNT 100
@@ -21,7 +23,10 @@
 #define EM "em"
 #define STRONG "strong"
 #define DEL "del"
-#define MARK "code"
+#define CODE "code"
+#define SUP "sup"
+#define SUB "sub"
+#define MARK "mark"
 
 #define TRUE 1
 #define FALSE 0
@@ -61,6 +66,7 @@ typedef struct Media {
 
 typedef struct Template {
   long body_len;
+  time_t modified_date;
   char id[ENTRY_SIZE];
   char *body;
 } Template;
@@ -73,6 +79,7 @@ typedef struct Templates {
 typedef struct Entry {
   int children_len, incoming_len;
   long content_len;
+  time_t created_date, modified_date;
   char id[ENTRY_SIZE];
   char name[ENTRY_SIZE];
   char content[1024 * 1024];
@@ -147,7 +154,10 @@ typedef enum inline_style_type {
   em = 1,
   strong = 2,
   del = 3,
-  mark = 4
+  code = 4,
+  mark = 5,
+  sup = 6,
+  sub = 7
 } inline_style_type;
 
 typedef struct Queue {
@@ -185,7 +195,14 @@ inline_style_queue_pop(Queue *queue) {
       return DEL;
     case (int)mark:
       return MARK;
+    case (int)code:
+      return CODE;
+    case (int)sub:
+      return SUB;
+    case (int)sup:
+      return SUP;
     default:
+      printf("Inline Style Not Handled");
       return NULL;
   }
 }
@@ -207,6 +224,15 @@ list_queue_pop(Queue *queue) {
 
 #pragma endregion
 
+static int
+get_file_stats(char *dir, char *filename, char *ext, struct stat *stats) {
+  char fullpath[1024] = {"\0"};
+  strcat(fullpath, dir);
+  strcat(fullpath, filename);
+  strcat(fullpath, ext);
+  return stat(fullpath, stats);
+}
+
 static FILE *
 get_file(char *dir, char *filename, char *ext, char *op) {
   char fullpath[1024] = {"\0"};
@@ -225,6 +251,17 @@ delete_file(char *dir, char *filename, char *ext) {
   strcat(fullpath, ext);
   printf("Removing File: \"%s\"\n", fullpath);
   return remove(fullpath);
+}
+
+static char *get_formatted_date(time_t *time, int local) {
+  char *s = (char *)malloc(23 * sizeof(char));
+  struct tm ct;
+  if (local)
+    ct = *(localtime(time));
+  else
+    ct = *(gmtime(time));
+  sprintf(s, "%02d-%02d-%d %02d:%02d:%02d %s", ct.tm_mon + 1, ct.tm_mday, ct.tm_year + 1900, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_zone);
+  return s;
 }
 
 #pragma region Markdown
@@ -358,21 +395,41 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
     char *link_ptr;
 
     if (STRNCMP(end_ptr, "]({", 3)) {
-      link_ptr = end_ptr + 3;
-      link_end_ptr = strchr(link_ptr, '}');
-      *link_end_ptr = '\0';
+      char entryId[32] = {0};
+      char linkTarget[64] = {0};
+      int targetLength = 0;
 
-      Entry *linkedEntry = find_entry_in_entries(entries, link_ptr);
+      link_ptr = end_ptr + 3;
+      char *entryEndPtr = strchr(link_ptr, '#');
+      if (entryEndPtr) {
+        char *targetEndPtr = strchr(link_ptr, '}');
+        targetLength = targetEndPtr - entryEndPtr;
+        if (targetLength > 0) {
+          sprintf(linkTarget, "%.*s", targetLength, entryEndPtr);
+        } else {
+          entryEndPtr = targetEndPtr;
+        }
+      } else {
+        entryEndPtr = strchr(link_ptr, '}');
+      }
+
+      int entryLength = entryEndPtr - link_ptr;
+      sprintf(entryId, "%.*s", entryLength, link_ptr);
+
+      link_end_ptr = strchr(link_ptr, '}');
+      int length = link_end_ptr - link_ptr;
+      Entry *linkedEntry = find_entry_in_entries(entries, entryId);
       if (linkedEntry) {
         Entry *incEntry = find_entry(linkedEntry->incoming[0], linkedEntry->incoming_len, entry->id);
         if (incEntry == NULL && linkedEntry != entry) {
           linkedEntry->incoming[linkedEntry->incoming_len++] = entry;
         }
 
-        sprintf(linkURL, "./%s.html", linkedEntry->id);
+        sprintf(linkURL, "./%s.html%s", entryId, linkTarget);
+      } else {
+        printf("Link Not Found: %s\n", entryId);
       }
-
-      *link_end_ptr = '}';
+      // *link_end_ptr = '}';
       link_end_ptr++;
     } else if (STRNCMP(end_ptr, "](#", 3)) {
       link_ptr = end_ptr + 2;  // include the #
@@ -433,6 +490,15 @@ output_stripped(FILE *output, char *curLine, int lineLength, int isEscaped, Entr
         else
           fprintf(output, "%s", "</span><span class=\"tag\">&gt;</span>");
         break;
+      case '&':
+        fprintf(output, "%s", "&amp;");
+        break;
+      case '\'':
+        fprintf(output, "%s", "&apos;");
+        break;
+      case '"':
+        fprintf(output, "%s", "&quot;");
+        break;
       default:
         fputc(curChar, output);
         break;
@@ -441,7 +507,7 @@ output_stripped(FILE *output, char *curLine, int lineLength, int isEscaped, Entr
 }
 
 static int
-is_inline_style(FILE *output, char *curLine, Queue *queue, char *md, char *html, int tag) {
+is_inline_style(FILE *output, char *curLine, Queue *queue, char *md, char *html, int tag, int noSpace) {
   char *ptr = curLine;
   int length = strlen(md);
   if (STRNCMP(ptr, md, length)) {
@@ -453,9 +519,13 @@ is_inline_style(FILE *output, char *curLine, Queue *queue, char *md, char *html,
       else
         fprintf(output, "</%s>", inline_style_queue_pop(queue));
       return length;
+    } else if (*(end_ptr + 1) == ' ') {
+      return FALSE;
+    } else if (noSpace && isblank(*(ptr - 1))) {
+      return FALSE;
     }
 
-    while (*(end_ptr) != '\0' && *(end_ptr + 1) != '\0') {
+    while (*(end_ptr) != '\0' && *(end_ptr + 1) != '\0' && !(noSpace && isblank(*(end_ptr + 1)))) {
       if (STRNCMP(end_ptr + 2, md, length)) {
         fprintf(output, "<%s>", html);
         queue_push(queue, tag);
@@ -480,13 +550,19 @@ output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped,
     } else if (!isEscaped && *curLinePtr == '\\') {
       isEscaped = TRUE;
       i++;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "**", STRONG, strong))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "**", STRONG, strong, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "*", EM, em))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "*", EM, em, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "~~", DEL, del))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "~~", DEL, del, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "`", MARK, mark))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "`", CODE, code, FALSE))) {
+      i += length;
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "==", MARK, mark, FALSE))) {
+      i += length;
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "^", SUP, sup, TRUE))) {
+      i += length;
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "~", SUB, sub, TRUE))) {
       i += length;
     } else if (!isEscaped && (length = is_html(curLinePtr))) {
       fprintf(output, "%.*s", length, curLinePtr);
@@ -644,6 +720,15 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
       sprintf(openTag, "<h%i>", header);
       sprintf(closeTag, "</h%i>", header);
       curLine += header + 1;
+
+      char *idStart, *idEnd;
+      if ((idStart = strchr(curLine, '{')) && *(idStart + 1) == '#' && (idEnd = strchr(idStart + 1, '}'))) {
+        *idStart = '\0';
+        idStart += 2;
+        int length = idEnd - idStart;
+        sprintf(openTag, "<h%i id=\"%.*s\">", header, length, idStart);
+      }
+
     } else if ((listType = is_list(curLine))) {
       if (listLevel->count == 0 || indent - prevIndent == TAB_SIZE) {
         strcpy(&openTag[0], "<");
@@ -754,6 +839,7 @@ int parse_content(Entries *entries) {
   long contentBufferLength = 0;
 
   for (i = 0; i < entries->length; i++) {
+    printf("\n");
     Entry *entryPtr = &entries->values[i];
 
     FILE *contentFile = get_file(CONTENT_DIR, entryPtr->id, ".md", "r");
@@ -761,6 +847,19 @@ int parse_content(Entries *entries) {
     if (contentFile == NULL) {
       printf("File Not Found %s.md\n", entryPtr->id);
       continue;
+    } else {
+      struct stat stats;
+      if (get_file_stats(CONTENT_DIR, entryPtr->id, ".md", &stats) == 0) {
+        entryPtr->created_date = stats.st_birthtime;
+        entryPtr->modified_date = stats.st_mtime;
+
+        char *modifiedDate = get_formatted_date(&(entryPtr->modified_date), TRUE);
+        char *createdDate = get_formatted_date(&(entryPtr->created_date), TRUE);
+        printf("Created on: %s\n", createdDate);
+        printf("Modified on: %s\n", modifiedDate);
+        free(modifiedDate);
+        free(createdDate);
+      }
     }
 
     memset(contentBuffer, 0, contentBufferLength);
@@ -778,20 +877,37 @@ int parse_content(Entries *entries) {
     fread(contentBuffer, contentBufferLength + 1, 1, contentFile);
     fclose(contentFile);
 
-    FILE *output = get_file(TEMP_DIR, entryPtr->id, ".txt", "w+");
+    FILE *output = NULL;
+    // struct stat stats;
+    // if (get_file_stats(TEMP_DIR, entryPtr->id, ".html", &stats) == 0) {
+    //   if (stats.st_mtime >= entryPtr->modified_date) {
+    //     output = get_file(TEMP_DIR, entryPtr->id, ".html", "r");
+
+    //     if (output != NULL) {
+    //       int i;
+    //       for (i = 0; i < contentBufferLength; i++) {
+    //         output_markdown_link(output, &contentBuffer[i], entryPtr, entries);
+    //       }
+    //     }
+    //   }
+    // }
 
     if (output == NULL) {
-      printf("File Not Found: %s.txt\n", entryPtr->id);
-      return FALSE;
+      output = get_file(TEMP_DIR, entryPtr->id, ".html", "w+");
+
+      if (output == NULL) {
+        printf("File Not Found: %s.html\n", entryPtr->id);
+        return FALSE;
+      }
+
+      output_markdown(output, contentBuffer, entryPtr, entries);
     }
 
-    output_markdown(output, contentBuffer, entryPtr, entries);
     fseek(output, 0, SEEK_END);
     entryPtr->content_len = ftell(output);
     fseek(output, 0, SEEK_SET);
     fread(entryPtr->content, entryPtr->content_len + 1, 1, output);
     fclose(output);
-    delete_file(TEMP_DIR, entryPtr->id, ".txt");
   }
 
   return TRUE;
@@ -835,6 +951,7 @@ int parse_entries(Entries *entries, Templates *templates) {
 }
 
 int parse_templates(Templates *templates) {
+  printf("\n");
   FILE *templateModel = get_file(MODEL_DIR, "templates", ".tsv", "r");
 
   if (templateModel == NULL) {
@@ -858,6 +975,11 @@ int parse_templates(Templates *templates) {
     if (templateFile == NULL) {
       printf("File Not Found: %s.html\n", id);
       return FALSE;
+    } else {
+      struct stat stats;
+      if (get_file_stats(TEMPLATE_DIR, id, ".html", &stats) == 0) {
+        templatePtr->modified_date = stats.st_mtime;
+      }
     }
 
     fseek(templateFile, 0, SEEK_END);
@@ -1003,6 +1125,14 @@ output_html_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
       html_inc_links(output, entry);
     } else if (STRNCMP("content", start_ptr + 1, size)) {
       fputs(entry->content, output);
+    } else if (STRNCMP("modified_date", start_ptr + 1, size)) {
+      char *date = get_formatted_date(&entry->modified_date, FALSE);
+      fprintf(output, "%s", date);
+      free(date);
+    } else if (STRNCMP("created_date", start_ptr + 1, size)) {
+      char *date = get_formatted_date(&entry->created_date, FALSE);
+      fprintf(output, "%s", date);
+      free(date);
     }
 
     *start_ptr = '{';
@@ -1030,6 +1160,18 @@ output_html(FILE *output, char *curLine, Entry *entry, Entries *entries) {
 
 int output_file(Entry *entry, Entries *entries) {
   if (entry->content_len > 0) {
+    struct stat stats;
+    if (get_file_stats(OUTPUT_DIR, entry->id, ".html", &stats) == 0) {
+      time_t lastModified = stats.st_mtime;
+      if (lastModified >= entry->modified_date &&
+          lastModified >= entry->header->modified_date &&
+          lastModified >= entry->template->modified_date &&
+          lastModified >= entry->footer->modified_date) {
+        printf("File Not Modified: %s\n", entry->id);
+        return TRUE;
+      }
+    }
+
     FILE *output = get_file(OUTPUT_DIR, entry->id, ".html", "w+");
     if (output == NULL) {
       printf("File Not Found: %s.html\n", entry->id);

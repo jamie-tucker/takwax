@@ -22,6 +22,14 @@ entry_id
 template_id
 ```
 
+```text
+modified_date
+```
+
+```text
+created_date
+```
+
 ### Navigation
 
 {nav}, {nav|hide}
@@ -85,6 +93,8 @@ nav > h2:only-child {
 
 [link name](http://) External Link
 [link name]({index}) Internal Link
+[link name]({index#anchor}) Internal Anchor Link
+[link name](#anchor) Page Anchor
 
 ```html
 <a href="http://">link name</a>
@@ -100,6 +110,8 @@ nav > h2:only-child {
 ####
 #####
 ######
+
+# {#link}
 ```
 
 ```html
@@ -109,6 +121,8 @@ nav > h2:only-child {
 <h4>
 <h5>
 <h6>
+
+<h1 id="link">
 ```
 
 ### Lists
@@ -139,7 +153,7 @@ nav > h2:only-child {
 
 ![alt text](http://image.jpg")
 ![alt text]({link.jpg})
-![alt text]({link.jpg} "This is a caption")
+![alt text]({link.jpg}) {#This is a caption}
 
 ```html
 <img src="link.jpg" alt="alt text" />
