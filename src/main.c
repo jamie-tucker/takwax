@@ -96,8 +96,8 @@ typedef struct Entries {
 Entry *
 create_entry(Entries *entries, char *id, char *name) {
   Entry *entry = &entries->values[entries->length++];
-  snprintf(entry->id, ENTRY_SIZE, id);
-  snprintf(entry->name, ENTRY_SIZE, name);
+  snprintf(entry->id, ENTRY_SIZE, "%s", id);
+  snprintf(entry->name, ENTRY_SIZE, "%s", name);
   entry->children_len = 0;
   entry->content_len = 0;
   entry->incoming_len = 0;
@@ -126,7 +126,7 @@ find_entry_in_entries(Entries *entries, char *id) {
 Template *
 create_template(Templates *templates, char *id) {
   Template *template = &templates->values[templates->length++];
-  snprintf(template->id, ENTRY_SIZE, id);
+  snprintf(template->id, ENTRY_SIZE, "%s", id);
 
   return template;
 }
@@ -923,7 +923,6 @@ int parse_entries(Entries *entries, Templates *templates) {
 }
 
 int parse_templates(Templates *templates) {
-  printf("\n");
   FILE *templateModel = get_file(MODEL_DIR, "templates", ".tsv", "r");
 
   if (templateModel == NULL) {
