@@ -13,6 +13,7 @@
 
 #define ENTRY_SIZE 32
 #define ENTRY_COUNT 100
+#define TAG_SIZE 100
 
 // Markdown Settings
 #define TAB_SIZE 2
@@ -68,7 +69,7 @@ typedef struct Template {
   long body_len;
   time_t modified_date;
   char id[ENTRY_SIZE];
-  char *body;
+  char body[1024 * 1024];
 } Template;
 
 typedef struct Templates {
@@ -95,8 +96,8 @@ typedef struct Entries {
 Entry *
 create_entry(Entries *entries, char *id, char *name) {
   Entry *entry = &entries->values[entries->length++];
-  strcpy(entry->id, id);
-  strcpy(entry->name, name);
+  snprintf(entry->id, ENTRY_SIZE, id);
+  snprintf(entry->name, ENTRY_SIZE, name);
   entry->children_len = 0;
   entry->content_len = 0;
   entry->incoming_len = 0;
@@ -125,7 +126,7 @@ find_entry_in_entries(Entries *entries, char *id) {
 Template *
 create_template(Templates *templates, char *id) {
   Template *template = &templates->values[templates->length++];
-  strcpy(template->id, id);
+  snprintf(template->id, ENTRY_SIZE, id);
 
   return template;
 }
@@ -166,9 +167,8 @@ typedef struct Queue {
 } Queue;
 
 static Queue *
-create_queue() {
-  Queue *queue = (Queue *)malloc(sizeof(Queue));
-  memset(queue, 0, sizeof(Queue));
+create_queue(Queue *queue) {
+  memset(queue->list, 0, 32);
   queue->count = 0;
   return queue;
 }
@@ -253,15 +253,13 @@ delete_file(char *dir, char *filename, char *ext) {
   return remove(fullpath);
 }
 
-static char *get_formatted_date(time_t *time, int local) {
-  char *s = (char *)malloc(23 * sizeof(char));
+static void get_formatted_date(char *s, int length, time_t *time, int local) {
   struct tm ct;
   if (local)
     ct = *(localtime(time));
   else
     ct = *(gmtime(time));
-  sprintf(s, "%02d-%02d-%d %02d:%02d:%02d %s", ct.tm_mon + 1, ct.tm_mday, ct.tm_year + 1900, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_zone);
-  return s;
+  snprintf(s, length, "%02d-%02d-%d %02d:%02d:%02d %s", ct.tm_mon + 1, ct.tm_mday, ct.tm_year + 1900, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_zone);
 }
 
 #pragma region Markdown
@@ -289,49 +287,28 @@ is_html(char *curLine) {
     if (end_ptr) {
       int length = end_ptr - curLine;
 
-      if (STRNCMP(ptr, "table>", length) ||
-          STRNCMP(ptr, "table style", 11) ||
-          STRNCMP(ptr, "table class", 11) ||
-          STRNCMP(ptr, "table id", 8) ||
-          STRNCMP(ptr, "/table>", length) ||
+      if (STRNCMP(ptr, "table", 5) ||
+          STRNCMP(ptr, "/table", 6) ||
 
-          STRNCMP(ptr, "tr>", length) ||
-          STRNCMP(ptr, "tr class", 8) ||
-          STRNCMP(ptr, "tr style", 8) ||
-          STRNCMP(ptr, "tr id", 5) ||
-          STRNCMP(ptr, "/tr>", length) ||
+          STRNCMP(ptr, "tr", 2) ||
+          STRNCMP(ptr, "/tr", 3) ||
 
-          STRNCMP(ptr, "td>", length) ||
-          STRNCMP(ptr, "td class", 8) ||
-          STRNCMP(ptr, "td style", 8) ||
-          STRNCMP(ptr, "td id", 5) ||
-          STRNCMP(ptr, "/td>", length) ||
+          STRNCMP(ptr, "td", 2) ||
+          STRNCMP(ptr, "/td", 3) ||
 
-          STRNCMP(ptr, "div>", length) ||
-          STRNCMP(ptr, "div class", 9) ||
-          STRNCMP(ptr, "div style", 9) ||
-          STRNCMP(ptr, "div id", 6) ||
-          STRNCMP(ptr, "/div>", length) ||
+          STRNCMP(ptr, "div", 3) ||
+          STRNCMP(ptr, "/div", 4) ||
 
-          STRNCMP(ptr, "span>", length) ||
-          STRNCMP(ptr, "span class", 10) ||
-          STRNCMP(ptr, "span style", 10) ||
-          STRNCMP(ptr, "span id", 7) ||
-          STRNCMP(ptr, "/span>", length) ||
+          STRNCMP(ptr, "span", 4) ||
+          STRNCMP(ptr, "/span", 5) ||
 
           STRNCMP(ptr, "br />", length) ||
 
-          STRNCMP(ptr, "figure>", length) ||
-          STRNCMP(ptr, "figure class", 12) ||
-          STRNCMP(ptr, "figure style", 12) ||
-          STRNCMP(ptr, "figure id", 9) ||
-          STRNCMP(ptr, "/figure>", length) ||
+          STRNCMP(ptr, "figure", 6) ||
+          STRNCMP(ptr, "/figure", 7) ||
 
-          STRNCMP(ptr, "figcaption>", length) ||
-          STRNCMP(ptr, "figcaption class", 16) ||
-          STRNCMP(ptr, "figcaption style", 16) ||
-          STRNCMP(ptr, "figcaption id", 13) ||
-          STRNCMP(ptr, "/figcaption>", length)) {
+          STRNCMP(ptr, "figcaption", 10) ||
+          STRNCMP(ptr, "/figcaption", 11)) {
         return length + 1;
       }
     }
@@ -342,8 +319,8 @@ is_html(char *curLine) {
 
 static int
 markdown_image(void *output, char *curLine, int isFile) {
-  char altText[1024] = {'\0'};
-  char srcText[1024] = {'\0'};
+  char altText[1024] = {0};
+  char srcText[1024] = {0};
   char *link = "<img src=\"%.*s\" alt=\"%.*s\" />";
   char *ptr = curLine;
   char *endPtr = curLine;
@@ -362,7 +339,7 @@ markdown_image(void *output, char *curLine, int isFile) {
         if (isFile) {
           fprintf((FILE *)output, link, srcLength, altEndPtr, altLength, ptr);
         } else {
-          sprintf((char *)output, link, srcLength, altEndPtr, altLength, ptr);
+          snprintf((char *)output, 2048, link, srcLength, altEndPtr, altLength, ptr);
         }
 
         return endPtr - curLine + 1;
@@ -382,8 +359,8 @@ static int string_markdown_image(char *string, char *curLine) {
 
 static int
 output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries) {
-  char linkName[1024] = {'\0'};
-  char linkURL[1024] = {'\0'};
+  char linkName[2048] = {0};
+  char linkURL[1024] = {0};
   int externalLink = FALSE;
   int linkNameCount = 0;
 
@@ -540,7 +517,7 @@ is_inline_style(FILE *output, char *curLine, Queue *queue, char *md, char *html,
 static void
 output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
   int i, length;
-  Queue *inlineStyleQueue = create_queue();
+  Queue inlineStyleQueue = *create_queue(&inlineStyleQueue);
 
   for (i = 0; i < lineLength;) {
     char *curLinePtr = curLine + i;
@@ -550,19 +527,19 @@ output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped,
     } else if (!isEscaped && *curLinePtr == '\\') {
       isEscaped = TRUE;
       i++;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "**", STRONG, strong, FALSE))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, &inlineStyleQueue, "**", STRONG, strong, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "*", EM, em, FALSE))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, &inlineStyleQueue, "*", EM, em, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "~~", DEL, del, FALSE))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, &inlineStyleQueue, "~~", DEL, del, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "`", CODE, code, FALSE))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, &inlineStyleQueue, "`", CODE, code, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "==", MARK, mark, FALSE))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, &inlineStyleQueue, "==", MARK, mark, FALSE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "^", SUP, sup, TRUE))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, &inlineStyleQueue, "^", SUP, sup, TRUE))) {
       i += length;
-    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, inlineStyleQueue, "~", SUB, sub, TRUE))) {
+    } else if (!isEscaped && (length = is_inline_style(output, curLinePtr, &inlineStyleQueue, "~", SUB, sub, TRUE))) {
       i += length;
     } else if (!isEscaped && (length = is_html(curLinePtr))) {
       fprintf(output, "%.*s", length, curLinePtr);
@@ -577,11 +554,9 @@ output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped,
       i++;
     }
   }
-
-  free(inlineStyleQueue);
 }
 
-static Queue *
+static void
 reset_list(FILE *output, Queue *listLevel, int listOpen) {
   while (listLevel->count > 0) {
     if (listOpen) {
@@ -593,7 +568,7 @@ reset_list(FILE *output, Queue *listLevel, int listOpen) {
     }
   }
 
-  return listLevel;
+  // return listLevel;
 }
 
 static int
@@ -654,7 +629,7 @@ static void
 output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
   char *curLine = buffer;
   int prevIndent = 0;
-  Queue *listLevel = create_queue();
+  Queue listLevel = *create_queue(&listLevel);
   int codeOpen = FALSE, listOpen = FALSE, blockquoteOpen = FALSE;
   void (*output_line)(FILE * output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries);
 
@@ -662,8 +637,8 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     char *nextLine = strchr(curLine, '\n');
     if (nextLine) *nextLine = '\0';  // temporarily terminate the current line
 
-    char openTag[100] = {'\0'};
-    char closeTag[100] = {'\0'};
+    char openTag[TAG_SIZE] = {0};
+    char closeTag[TAG_SIZE] = {0};
     int indent = 0;
     output_line = output_markdown_line;
     int isEscaped = FALSE;
@@ -682,11 +657,11 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 
     int header, listType;
     if (STRNCMP(curLine, "\\", 1)) {
-      listLevel = reset_list(output, listLevel, listOpen);
+      reset_list(output, &listLevel, listOpen);
       listOpen = FALSE;
       isEscaped = TRUE;
-      strcpy(openTag, "<p>");
-      strcpy(closeTag, "</p>");
+      snprintf(openTag, TAG_SIZE, "<p>");
+      snprintf(closeTag, TAG_SIZE, "</p>");
       curLine++;
     } else if (STRNCMP(curLine, "```", 3)) {
       curLine += 3;
@@ -695,10 +670,10 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
       }
 
       if (codeOpen) {
-        strcpy(openTag, "</code>\n</pre>");
+        snprintf(openTag, TAG_SIZE, "</code>\n</pre>");
         codeOpen = FALSE;
       } else {
-        sprintf(openTag, "<pre>\n<code class=\"%s\">", curLine);
+        snprintf(openTag, TAG_SIZE, "<pre>\n<code class=\"%s\">", curLine);
         codeOpen = TRUE;
       }
 
@@ -712,13 +687,13 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     } else if (STRNCMP(curLine, "![", 2)) {
       // do nothing
     } else if (STRNCMP(curLine, "***", MAX(nextLine ? nextLine - curLine : 0, 3))) {
-      strcpy(closeTag, "<hr />");
+      snprintf(closeTag, TAG_SIZE, "<hr />");
       curLine += 3;
     } else if ((header = is_header(curLine)) > 0 && indent <= TAB_SIZE * 2) {
-      listLevel = reset_list(output, listLevel, listOpen);
+      reset_list(output, &listLevel, listOpen);
       listOpen = FALSE;
-      sprintf(openTag, "<h%i>", header);
-      sprintf(closeTag, "</h%i>", header);
+      snprintf(openTag, TAG_SIZE, "<h%i>", header);
+      snprintf(closeTag, TAG_SIZE, "</h%i>", header);
       curLine += header + 1;
 
       char *idStart, *idEnd;
@@ -726,11 +701,11 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
         *idStart = '\0';
         idStart += 2;
         int length = idEnd - idStart;
-        sprintf(openTag, "<h%i id=\"%.*s\">", header, length, idStart);
+        snprintf(openTag, TAG_SIZE, "<h%i id=\"%.*s\">", header, length, idStart);
       }
 
     } else if ((listType = is_list(curLine))) {
-      if (listLevel->count == 0 || indent - prevIndent == TAB_SIZE) {
+      if (listLevel.count == 0 || indent - prevIndent == TAB_SIZE) {
         strcpy(&openTag[0], "<");
         switch (listType) {
           case (int)ol:
@@ -742,20 +717,20 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
         }
         strcpy(&openTag[3], ">\n<li>");
         listOpen = TRUE;
-        queue_push(listLevel, listType);
+        queue_push(&listLevel, listType);
       } else if (indent < prevIndent) {
         int i, tagIndex;
         for (i = 0, tagIndex = 0; i < (prevIndent - indent) / TAB_SIZE; i++) {
           if (i == 0) {
             strcpy(&openTag[0], "</li>\n");
             strcpy(&openTag[6], "</");
-            strcpy(&openTag[8], list_queue_pop(listLevel));
+            strcpy(&openTag[8], list_queue_pop(&listLevel));
             strcpy(&openTag[10], ">");
             tagIndex = 11;
           } else {
             strcpy(&openTag[tagIndex], "\n</li>");
             strcpy(&openTag[tagIndex + 6], "\n</");
-            strcpy(&openTag[tagIndex + 9], list_queue_pop(listLevel));
+            strcpy(&openTag[tagIndex + 9], list_queue_pop(&listLevel));
             strcpy(&openTag[tagIndex + 11], ">");
             tagIndex += 12;
           }
@@ -769,9 +744,9 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
         listOpen = TRUE;
       } else {
         if (listOpen) {
-          strcpy(openTag, "</li>\n<li>");
+          snprintf(openTag, TAG_SIZE, "</li>\n<li>");
         } else {
-          strcpy(openTag, "<li>");
+          snprintf(openTag, TAG_SIZE, "<li>");
         }
 
         listOpen = TRUE;
@@ -779,22 +754,22 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 
       curLine += listType;
     } else if (*curLine == '\0' && *(curLine + 1) == '\n') {
-      listLevel = reset_list(output, listLevel, listOpen);
+      reset_list(output, &listLevel, listOpen);
       listOpen = FALSE;
-      strcpy(openTag, "<br />");
+      snprintf(openTag, TAG_SIZE, "<br />");
     } else if (*curLine != '\0') {
-      if (indent > prevIndent && listLevel->count > 0) {
+      if (indent > prevIndent && listLevel.count > 0) {
         indent = prevIndent;
-        strcpy(closeTag, "</p></li>");
+        snprintf(closeTag, TAG_SIZE, "</p></li>");
         listOpen = FALSE;
       } else {
-        listLevel = reset_list(output, listLevel, listOpen);
+        reset_list(output, &listLevel, listOpen);
         listOpen = FALSE;
-        strcpy(closeTag, "</p>");
+        snprintf(closeTag, TAG_SIZE, "</p>");
       }
-      strcpy(openTag, "<p>");
+      snprintf(openTag, TAG_SIZE, "<p>");
     } else {
-      listLevel = reset_list(output, listLevel, listOpen);
+      reset_list(output, &listLevel, listOpen);
       listOpen = FALSE;
     }
 
@@ -829,8 +804,6 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
     curLine = nextLine ? (nextLine + 1) : NULL;
     prevIndent = indent;
   }
-
-  free(listLevel);
 }
 
 int parse_content(Entries *entries) {
@@ -853,12 +826,11 @@ int parse_content(Entries *entries) {
         entryPtr->created_date = stats.st_birthtime;
         entryPtr->modified_date = stats.st_mtime;
 
-        char *modifiedDate = get_formatted_date(&(entryPtr->modified_date), TRUE);
-        char *createdDate = get_formatted_date(&(entryPtr->created_date), TRUE);
+        char modifiedDate[24] = {0}, createdDate[24] = {0};
+        get_formatted_date(&modifiedDate[0], COUNT(modifiedDate), &(entryPtr->modified_date), TRUE);
+        get_formatted_date(&createdDate[0], COUNT(createdDate), &(entryPtr->created_date), TRUE);
         printf("Created on: %s\n", createdDate);
         printf("Modified on: %s\n", modifiedDate);
-        free(modifiedDate);
-        free(createdDate);
       }
     }
 
@@ -985,11 +957,10 @@ int parse_templates(Templates *templates) {
     fseek(templateFile, 0, SEEK_END);
     templatePtr->body_len = ftell(templateFile);
     fseek(templateFile, 0, SEEK_SET);
-    templatePtr->body = (char *)malloc(templatePtr->body_len);
-    if (templatePtr->body) {
+    if (sizeof(templatePtr->body) >= templatePtr->body_len) {
       fread(templatePtr->body, 1, templatePtr->body_len, templateFile);
     } else {
-      printf("Not enough memory");
+      printf("Template Body not large enough: %s", templatePtr->id);
       return FALSE;
     }
 
@@ -1126,13 +1097,13 @@ output_html_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
     } else if (STRNCMP("content", start_ptr + 1, size)) {
       fputs(entry->content, output);
     } else if (STRNCMP("modified_date", start_ptr + 1, size)) {
-      char *date = get_formatted_date(&entry->modified_date, FALSE);
+      char date[24] = {0};
+      get_formatted_date(&date[0], COUNT(date), &entry->modified_date, FALSE);
       fprintf(output, "%s", date);
-      free(date);
     } else if (STRNCMP("created_date", start_ptr + 1, size)) {
-      char *date = get_formatted_date(&entry->created_date, FALSE);
+      char date[24] = {0};
+      get_formatted_date(&date[0], COUNT(date), &entry->created_date, FALSE);
       fprintf(output, "%s", date);
-      free(date);
     }
 
     *start_ptr = '{';
