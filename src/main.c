@@ -11,9 +11,11 @@
 #define OUTPUT_DIR "output/site/"
 #define TEMP_DIR "output/.temp/"
 
+// strign buffer sizes
 #define ENTRY_SIZE 32
 #define ENTRY_COUNT 100
 #define TAG_SIZE 100
+#define FORMATTED_DATE_SIZE 24
 
 // Markdown Settings
 #define TAB_SIZE 2
@@ -106,9 +108,7 @@ create_entry(Entries *entries, char *id, char *name) {
 
 Entry *
 find_entry(Entry *entry_start, int length, char *id) {
-  int i;
-
-  for (i = 0; i < length; ++i) {
+  for (int i = 0; i < length; i++) {
     Entry *entry_ptr = entry_start + i;
     if (STRCMP(id, entry_ptr->id)) {
       return entry_ptr;
@@ -133,9 +133,7 @@ create_template(Templates *templates, char *id) {
 
 Template *
 find_template(Templates *templates, char *id) {
-  int i;
-
-  for (i = 0; i < templates->length; ++i) {
+  for (int i = 0; i < templates->length; i++) {
     if (STRCMP(id, templates->values[i].id)) {
       return &templates->values[i];
     }
@@ -226,34 +224,25 @@ list_queue_pop(Queue *queue) {
 
 static int
 get_file_stats(char *dir, char *filename, char *ext, struct stat *stats) {
-  char fullpath[1024] = {"\0"};
-  strcat(fullpath, dir);
-  strcat(fullpath, filename);
-  strcat(fullpath, ext);
+  char fullpath[1024] = {0};
+  strlcat(fullpath, dir, 1024);
+  strlcat(fullpath, filename, 1024);
+  strlcat(fullpath, ext, 1024);
   return stat(fullpath, stats);
 }
 
 static FILE *
 get_file(char *dir, char *filename, char *ext, char *op) {
-  char fullpath[1024] = {"\0"};
-  strcat(fullpath, dir);
-  strcat(fullpath, filename);
-  strcat(fullpath, ext);
+  char fullpath[1024] = {0};
+  strlcat(fullpath, dir, 1024);
+  strlcat(fullpath, filename, 1024);
+  strlcat(fullpath, ext, 1024);
   printf("Opening File: \"%s\"\n", fullpath);
   return fopen(fullpath, op);
 }
 
-static int
-delete_file(char *dir, char *filename, char *ext) {
-  char fullpath[1024] = {"\0"};
-  strcat(fullpath, dir);
-  strcat(fullpath, filename);
-  strcat(fullpath, ext);
-  printf("Removing File: \"%s\"\n", fullpath);
-  return remove(fullpath);
-}
-
-static void get_formatted_date(char *s, int length, time_t *time, int local) {
+static void
+get_formatted_date(char *s, int length, time_t *time, int local) {
   struct tm ct;
   if (local)
     ct = *(localtime(time));
@@ -263,20 +252,6 @@ static void get_formatted_date(char *s, int length, time_t *time, int local) {
 }
 
 #pragma region Markdown
-
-static int
-md_img(FILE *file, char *curLine) {
-  char *start_ptr = strchr(curLine, '!');
-  if (STRNCMP(start_ptr, "![", 2)) {
-    char *end_ptr = strchr(start_ptr + 1, ']');
-  } else {
-    return FALSE;
-  }
-
-  // fprintf(file, "<a href=\"%s\">%s</a>", linkURL, lineName);
-
-  return TRUE;
-}
 
 static int
 is_html(char *curLine) {
@@ -308,7 +283,10 @@ is_html(char *curLine) {
           STRNCMP(ptr, "/figure", 7) ||
 
           STRNCMP(ptr, "figcaption", 10) ||
-          STRNCMP(ptr, "/figcaption", 11)) {
+          STRNCMP(ptr, "/figcaption", 11) ||
+
+          STRNCMP(ptr, "iframe", 6) ||
+          STRNCMP(ptr, "/iframe", 7)) {
         return length + 1;
       }
     }
@@ -450,8 +428,7 @@ output_markdown_link(FILE *output, char *curLine, Entry *entry, Entries *entries
 
 static void
 output_stripped(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
-  int i;
-  for (i = 0; i < lineLength; i++) {
+  for (int i = 0; i < lineLength; i++) {
     char curChar = *(curLine + i);
 
     switch (curChar) {
@@ -516,10 +493,10 @@ is_inline_style(FILE *output, char *curLine, Queue *queue, char *md, char *html,
 
 static void
 output_markdown_line(FILE *output, char *curLine, int lineLength, int isEscaped, Entry *entry, Entries *entries) {
-  int i, length;
+  int length;
   Queue inlineStyleQueue = *create_queue(&inlineStyleQueue);
 
-  for (i = 0; i < lineLength;) {
+  for (int i = 0; i < lineLength;) {
     char *curLinePtr = curLine + i;
 
     if (*curLinePtr == '\0') {
@@ -706,16 +683,20 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 
     } else if ((listType = is_list(curLine))) {
       if (listLevel.count == 0 || indent - prevIndent == TAB_SIZE) {
-        strcpy(&openTag[0], "<");
+        // strcpy(&openTag[0], "<");
+        strncat(openTag, "<", 1);
         switch (listType) {
           case (int)ol:
-            strcpy(&openTag[1], OL);
+            strncat(openTag, OL, 2);
+            // strcpy(&openTag[1], OL);
             break;
           case (int)ul:
-            strcpy(&openTag[1], UL);
+            strncat(openTag, UL, 2);
+            // strcpy(&openTag[1], UL);
             break;
         }
-        strcpy(&openTag[3], ">\n<li>");
+        // strcpy(&openTag[3], ">\n<li>");
+        strncat(openTag, ">\n<li>", 6);
         listOpen = TRUE;
         queue_push(&listLevel, listType);
       } else if (indent < prevIndent) {
@@ -775,8 +756,7 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 
     fputc('\n', output);
 
-    int i;
-    for (i = 0; i < indent; i++) {
+    for (int i = 0; i < indent; i++) {
       fputc(' ', output);
     }
 
@@ -807,11 +787,10 @@ output_markdown(FILE *output, char *buffer, Entry *entry, Entries *entries) {
 }
 
 int parse_content(Entries *entries) {
-  int i;
   char contentBuffer[1024 * 1024];
   long contentBufferLength = 0;
 
-  for (i = 0; i < entries->length; i++) {
+  for (int i = 0; i < entries->length; i++) {
     printf("\n");
     Entry *entryPtr = &entries->values[i];
 
@@ -826,9 +805,9 @@ int parse_content(Entries *entries) {
         entryPtr->created_date = stats.st_birthtime;
         entryPtr->modified_date = stats.st_mtime;
 
-        char modifiedDate[24] = {0}, createdDate[24] = {0};
-        get_formatted_date(&modifiedDate[0], COUNT(modifiedDate), &(entryPtr->modified_date), TRUE);
-        get_formatted_date(&createdDate[0], COUNT(createdDate), &(entryPtr->created_date), TRUE);
+        char modifiedDate[FORMATTED_DATE_SIZE] = {0}, createdDate[FORMATTED_DATE_SIZE] = {0};
+        get_formatted_date(&modifiedDate[0], FORMATTED_DATE_SIZE, &(entryPtr->modified_date), TRUE);
+        get_formatted_date(&createdDate[0], FORMATTED_DATE_SIZE, &(entryPtr->created_date), TRUE);
         printf("Created on: %s\n", createdDate);
         printf("Modified on: %s\n", modifiedDate);
       }
@@ -1018,13 +997,12 @@ html_breadcrumbs(FILE *file, Entry *entry) {
 
 static void
 html_nav(FILE *file, Entry *entry, Entry *root, int show_root, int level) {
-  int i;
   if (level > 0)
     fputs("\n<ul>\n", file);
   else
     fputs("<ul>\n", file);
 
-  for (i = 0; i < root->children_len; i++) {
+  for (int i = 0; i < root->children_len; i++) {
     if (!show_root && root == root->children[i]) {
       // skip
     } else if (root->children[i]->content_len > 0) {
@@ -1055,10 +1033,9 @@ html_inc_links(FILE *file, Entry *entry) {
     return;
   }
 
-  int i;
   fputs("\t<ul>\n", file);
 
-  for (i = 0; i < entry->incoming_len; i++) {
+  for (int i = 0; i < entry->incoming_len; i++) {
     fprintf(file, "\t\t<li><a href=\"./%s.html\">%s</a></li>\n", entry->incoming[i]->id, entry->incoming[i]->name);
 
     if (entry == entry->incoming[i]) {
@@ -1096,12 +1073,12 @@ output_html_line(FILE *output, char *curLine, Entry *entry, Entries *entries) {
     } else if (STRNCMP("content", start_ptr + 1, size)) {
       fputs(entry->content, output);
     } else if (STRNCMP("modified_date", start_ptr + 1, size)) {
-      char date[24] = {0};
-      get_formatted_date(&date[0], COUNT(date), &entry->modified_date, FALSE);
+      char date[FORMATTED_DATE_SIZE] = {0};
+      get_formatted_date(&date[0], FORMATTED_DATE_SIZE, &entry->modified_date, FALSE);
       fprintf(output, "%s", date);
     } else if (STRNCMP("created_date", start_ptr + 1, size)) {
-      char date[24] = {0};
-      get_formatted_date(&date[0], COUNT(date), &entry->created_date, FALSE);
+      char date[FORMATTED_DATE_SIZE] = {0};
+      get_formatted_date(&date[0], FORMATTED_DATE_SIZE, &entry->created_date, FALSE);
       fprintf(output, "%s", date);
     }
 
@@ -1130,17 +1107,17 @@ output_html(FILE *output, char *curLine, Entry *entry, Entries *entries) {
 
 int output_file(Entry *entry, Entries *entries) {
   if (entry->content_len > 0) {
-    struct stat stats;
-    if (get_file_stats(OUTPUT_DIR, entry->id, ".html", &stats) == 0) {
-      time_t lastModified = stats.st_mtime;
-      if (lastModified >= entry->modified_date &&
-          lastModified >= entry->header->modified_date &&
-          lastModified >= entry->template->modified_date &&
-          lastModified >= entry->footer->modified_date) {
-        printf("File Not Modified: %s\n", entry->id);
-        return TRUE;
-      }
-    }
+    // struct stat stats;
+    // if (get_file_stats(OUTPUT_DIR, entry->id, ".html", &stats) == 0) {
+    //   time_t lastModified = stats.st_mtime;
+    //   if (lastModified >= entry->modified_date &&
+    //       lastModified >= entry->header->modified_date &&
+    //       lastModified >= entry->template->modified_date &&
+    //       lastModified >= entry->footer->modified_date) {
+    //     printf("File Not Modified: %s\n", entry->id);
+    //     return TRUE;
+    //   }
+    // }
 
     FILE *output = get_file(OUTPUT_DIR, entry->id, ".html", "w+");
     if (output == NULL) {
@@ -1159,9 +1136,7 @@ int output_file(Entry *entry, Entries *entries) {
 }
 
 int generate(Entries *entries, Templates *templates) {
-  int i;
-
-  for (i = 0; i < entries->length; i++) {
+  for (int i = 0; i < entries->length; i++) {
     if (!output_file(&entries->values[i], entries)) {
       return FALSE;
     }
